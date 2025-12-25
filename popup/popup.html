@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tool for Tester</title>
+  <link rel="stylesheet" href="../styles/main.css">
+  <link rel="stylesheet" href="popup.css">
+</head>
+
+<body>
+  <div class="app-container">
+    <header class="flex items-center justify-between p-4 border-b">
+      <h1 class="text-lg font-bold">Tool for Tester</h1>
+      <div class="flex items-center gap-2">
+        <label class="text-xs flex items-center gap-1 cursor-pointer select-none">
+          <input type="checkbox" id="chk-persistence"> Always On
+        </label>
+        <span class="badge">v1.0</span>
+      </div>
+    </header>
+
+    <main class="p-4">
+      <div class="grid gap-2">
+        <button id="btn-font-scanner" class="btn tool-btn w-full justify-start gap-2">
+          <span>📝</span> Font Scanner
+        </button>
+        <button id="btn-inspector" class="btn tool-btn w-full justify-start gap-2">
+          <span>🔍</span> Element Inspector
+        </button>
+        <button id="btn-color-picker" class="btn tool-btn w-full justify-start gap-2">
+          <span>🎨</span> Color Picker
+        </button>
+        <button id="btn-responsive" class="btn tool-btn w-full justify-start gap-2">
+          <span>📱</span> Responsive Viewer
+        </button>
+        <button id="btn-clear-cache" class="btn tool-btn w-full justify-start gap-2">
+          <span>🧹</span> Clear Cache
+        </button>
+        <button id="btn-api-monitor" class="btn tool-btn w-full justify-start gap-2">
+          <span>📡</span> API Activity Monitor
+        </button>
+      </div>
+
+      <!-- Result Area (Hidden by default, used for sub-views) -->
+      <div id="result-area" class="mt-4 hidden">
+        <!-- Dynamic Content -->
+      </div>
+    </main>
+  </div>
+  <script src="popup.js"></script>
+</body>
+
+</html>

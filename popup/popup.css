@@ -1,0 +1,37 @@
+body {
+    width: 350px;
+    min-height: 400px;
+}
+
+.border-b {
+    border-bottom: 1px solid var(--border-color);
+}
+
+.text-lg {
+    font-size: 1.125rem;
+}
+
+.font-bold {
+    font-weight: 700;
+}
+
+.badge {
+    background-color: var(--primary-color);
+    color: white;
+    padding: 0.1rem 0.4rem;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+}
+
+.tool-btn {
+    padding: 0.75rem 1rem;
+    transition: transform 0.1s;
+}
+
+.tool-btn:active {
+    transform: scale(0.98);
+}
+
+.hidden {
+    display: none;
+}

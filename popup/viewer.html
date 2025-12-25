@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Responsive Viewer</title>
+    <link rel="stylesheet" href="../styles/main.css">
+    <link rel="stylesheet" href="viewer.css">
+</head>
+
+<body>
+    <div class="toolbar flex items-center p-4 gap-4">
+        <h2 class="text-lg font-bold">Responsive Viewer</h2>
+        <span id="target-url" class="text-muted">Loading...</span>
+
+        <div style="margin-left:auto; display:flex; gap:8px; align-items:center;">
+            <input type="number" id="custom-w" placeholder="W" class="input" style="width:60px; padding:4px;">
+            <span>x</span>
+            <input type="number" id="custom-h" placeholder="H" class="input" style="width:60px; padding:4px;">
+            <button id="add-device-btn" class="btn">Add</button>
+        </div>
+
+        <button id="rotate-btn" class="btn">Rotate Screens ↻</button>
+    </div>
+
+    <div class="view-grid">
+        <div class="device-wrapper">
+            <div class="device-label">Mobile (375x667)</div>
+            <iframe id="frame-mobile" class="device-frame" width="375" height="667"></iframe>
+        </div>
+        <div class="device-wrapper">
+            <div class="device-label">Tablet (768x1024)</div>
+            <iframe id="frame-tablet" class="device-frame" width="768" height="1024"></iframe>
+        </div>
+        <div class="device-wrapper">
+            <div class="device-label">Desktop (1280x800)</div>
+            <iframe id="frame-desktop" class="device-frame" width="1280" height="800"></iframe>
+        </div>
+    </div>
+    <script src="viewer.js"></script>
+</body>
+
+</html>

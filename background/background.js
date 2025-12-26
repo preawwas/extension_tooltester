@@ -52,7 +52,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
 
     if (isNavigation && tab.url && !tab.url.startsWith('chrome://')) {
         chrome.storage.local.get(['persistentMode', 'activeTool', 'activeToolArgs'], (result) => {
-            if (result.persistentMode && result.activeTool) {
+            if (result.persistentMode && result.activeTool === 'apiMonitor') {
                 // Re-activate the tool
                 let action = '';
                 if (result.activeTool === 'inspector') action = 'toggleInspector';

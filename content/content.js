@@ -1,23 +1,7 @@
 console.log('Modern Tester Extension loaded');
 
 // Initialize Persistence (Pull Strategy)
-// Check storage immediately on load to restore state
-chrome.storage.local.get(['persistentMode', 'activeTool', 'activeToolArgs'], (result) => {
-    if (result.persistentMode && result.activeTool) {
-        console.log('Restoring tool state:', result.activeTool);
-        if (result.activeTool === 'inspector') {
-            toggleInspector(true);
-        } else if (result.activeTool === 'colorPicker') {
-            toggleColorPicker(true);
-        } else if (result.activeTool === 'fontScanner' && result.activeToolArgs && result.activeToolArgs.fontSize) {
-            // Font scanner doesn't have a 'active' flag check inside highlightFont like toggles do, 
-            // but calling it is safe.
-            highlightFont(result.activeToolArgs.fontSize);
-        } else if (result.activeTool === 'apiMonitor') {
-            toggleApiMonitor(true);
-        }
-    }
-});
+// Storage check moved down to ensure listener is ready first
 
 // React to storage changes to sync state across frames (e.g. for API Monitor)
 chrome.storage.onChanged.addListener((changes, area) => {
@@ -364,6 +348,7 @@ let apiMonitorActive = false; // exported or global state if needed
 let apiMonitorOverlay = null; // exported or global state
 let apiInterceptorInjected = false;
 let displayedTimestamps = new Map(); // Store counts of visible timestamps: timeString -> count
+let pendingRequests = []; // Queue for requests before overlay is ready
 
 function toggleApiMonitor(forceState = null) {
     if (forceState !== null) {
@@ -380,13 +365,25 @@ function toggleApiMonitor(forceState = null) {
 
         // Only create overlay if we are the top frame
         if (window.top === window.self) {
-            // Only create if it doesn't already exist in the DOM
-            if (!apiMonitorOverlay || !document.body.contains(apiMonitorOverlay)) {
-                createApiMonitorOverlay();
+            const showOverlay = () => {
+                if (!apiMonitorOverlay || !document.body.contains(apiMonitorOverlay)) {
+                    createApiMonitorOverlay();
+                    // Flush pending requests
+                    if (pendingRequests.length > 0) {
+                        pendingRequests.forEach(req => addRequestToOverlay(req));
+                        pendingRequests = [];
+                    }
+                } else {
+                    apiMonitorOverlay.style.display = 'flex';
+                }
+                showToast('API Monitor Active');
+            };
+
+            if (document.body) {
+                showOverlay();
             } else {
-                apiMonitorOverlay.style.display = 'flex';
+                document.addEventListener('DOMContentLoaded', showOverlay);
             }
-            showToast('API Monitor Active');
         }
 
         // Ensure listener is not added twice
@@ -397,7 +394,9 @@ function toggleApiMonitor(forceState = null) {
             removeApiMonitorOverlay();
             showToast('API Monitor Hidden');
         }
-        window.removeEventListener('message', handleApiMessage);
+        // Don't remove listener, we keep listening to keep state ready or just simply toggle overlay visibility
+        // But for true "off", we might want to stop processing. 
+        // For simplicity: We keep listening but handleApiMessage checks 'apiMonitorActive'.
     }
 
     // Only update state reference if we are top frame to avoid spam? 
@@ -405,6 +404,25 @@ function toggleApiMonitor(forceState = null) {
         updateToolState('apiMonitor', apiMonitorActive);
     }
 }
+
+// Initialize Message Listener JOINED with BUFFER logic
+// We listen immediately to catch 'document_start' messages even before storage returns.
+let isMonitorReady = false;
+let preInitQueue = [];
+
+window.addEventListener('message', handleApiMessage);
+
+// Initialize Persistence (Pull Strategy) moved here to clear up flow
+chrome.storage.local.get(['persistentMode', 'activeTool', 'activeToolArgs'], (result) => {
+    isMonitorReady = true;
+    if (result.persistentMode && result.activeTool === 'apiMonitor') {
+        console.log('Restoring tool state:', result.activeTool);
+        toggleApiMonitor(true);
+        // Flush pre-init queue
+        preInitQueue.forEach(msg => handleApiMessage(msg));
+    }
+    preInitQueue = [];
+});
 
 function injectNetworkInterceptor() {
     const script = document.createElement('script');
@@ -416,12 +434,18 @@ function injectNetworkInterceptor() {
 }
 
 function handleApiMessage(e) {
+    // If we haven't checked storage yet, buffer everything!
+    if (!isMonitorReady && e.data && e.data.source === 'mte-api-monitor') {
+        preInitQueue.push(e);
+        return;
+    }
+
     if (!apiMonitorActive) return;
 
     // Validate message source
     if (!e.data || e.data.source !== 'mte-api-monitor') return;
 
-    console.log('MTE: content.js received message', e.data.url);
+    // console.log('MTE: content.js received message', e.data.url); // Removed log spam
 
     // Filter 'pvg'
     if (e.data.url && e.data.url.toLowerCase().includes('pvg')) {
@@ -435,7 +459,8 @@ function handleApiMessage(e) {
             console.log('MTE: adding to overlay', e.data.url);
             addRequestToOverlay(e.data);
         } else {
-            console.log('MTE: overlay missing in top frame');
+            console.log('MTE: overlay missing, queuing', e.data.url);
+            pendingRequests.push(e.data);
         }
     } else {
         // We are a worker frame, forward to UI host via background
@@ -452,6 +477,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 });
 
 function createApiMonitorOverlay() {
+    // Check if exists in DOM to avoid resetting data
+    const existing = document.getElementById('mte-api-monitor');
+    if (existing) {
+        apiMonitorOverlay = existing;
+        apiMonitorOverlay.style.display = 'flex';
+        return; // Preserve existing state
+    }
+
     removeApiMonitorOverlay();
 
     const overlay = document.createElement('div');
@@ -461,7 +494,8 @@ function createApiMonitorOverlay() {
         bottom: 20px;
         right: 20px;
         width: 450px; /* Slightly wider for larger font */
-        height: 550px;
+        height: auto;
+        max-height: 550px;
         background: #f1f5f9; /* Slate 100 - Light Gray Background */
         border: 1px solid #cbd5e1; /* Slate 300 */
         border-radius: 8px;
@@ -483,29 +517,33 @@ function createApiMonitorOverlay() {
             display: flex;
             justify-content: space-between;
             align-items: center;
+            align-items: center;
             cursor: move;
             user-select: none;
         ">
-            <span style="font-weight: 700; font-size: 15px; color: #1e293b;">API Monitor</span>
+            <div style="display:flex; align-items:center; gap:8px;">
+                <span style="font-weight: 700; font-size: 15px; color: #1e293b;">API Monitor</span>
+                <span id="mte-req-count" style="
+                    background: #e2e8f0; 
+                    color: #475569; 
+                    font-size: 11px; 
+                    font-weight: 600; 
+                    padding: 2px 6px; 
+                    border-radius: 99px;
+                ">0</span>
+            </div>
             <div style="display:flex; gap: 8px; align-items: center;">
-                 <input type="text" id="mte-api-search" placeholder="Search..." style="
-                    padding: 4px 8px;
-                    border: 1px solid #cbd5e1;
-                    border-radius: 4px;
-                    font-size: 12px;
-                    width: 120px;
-                    outline: none;
-                    background: #f8fafc;
-                ">
+
                  <button id="mte-api-clear" style="
-                    background: #e2e8f0;
-                    border: 1px solid #cbd5e1;
-                    color: #475569;
-                    padding: 4px 10px;
+                    background: transparent;
+                    border: none;
+                    color: #64748b;
+                    padding: 6px 10px;
                     border-radius: 4px;
                     cursor: pointer;
                     font-size: 12px;
                     font-weight: 600;
+                    transition: all 0.2s;
                 ">Clear</button>
                 <button id="mte-api-close" style="
                     background: transparent;
@@ -582,29 +620,22 @@ function createApiMonitorOverlay() {
         toggleApiMonitor(false);
     });
 
-    overlay.querySelector('#mte-api-clear').addEventListener('click', () => {
+    const clearBtn = overlay.querySelector('#mte-api-clear');
+    clearBtn.addEventListener('click', () => {
         const content = overlay.querySelector('#mte-api-content');
         if (content) content.innerHTML = '';
         displayedTimestamps.clear(); // Reset timestamp tracker
+        updateRequestCount(0);
     });
 
-    // Search Logic
-    overlay.querySelector('#mte-api-search').addEventListener('input', (e) => {
-        // Debounce slightly if needed, but for simple list it's ok
-        const query = e.target.value.toLowerCase();
-        const content = overlay.querySelector('#mte-api-content');
-        const items = content.querySelectorAll('.mte-api-item');
+    // Clear hover effect
+    clearBtn.onmouseover = () => { clearBtn.style.background = '#fee2e2'; clearBtn.style.color = '#ef4444'; };
+    clearBtn.onmouseout = () => { clearBtn.style.background = 'transparent'; clearBtn.style.color = '#64748b'; };
+}
 
-        items.forEach(item => {
-            // textContent contains all text including hidden tabs (Response Body)
-            const text = item.textContent.toLowerCase();
-            if (text.includes(query)) {
-                item.style.display = 'block';
-            } else {
-                item.style.display = 'none';
-            }
-        });
-    });
+function updateRequestCount(n) {
+    const el = document.getElementById('mte-req-count');
+    if (el) el.textContent = n !== undefined ? n : (parseInt(el.textContent) + 1);
 }
 
 function removeApiMonitorOverlay() {
@@ -655,18 +686,39 @@ function addRequestToOverlay(data) {
         box-shadow: 0 1px 2px rgba(0,0,0,0.05);
     `;
 
-    const time = new Date().toLocaleTimeString('en-US', { hour12: false });
+    const time = new Date(data.timestamp || Date.now()).toLocaleTimeString('en-US', { hour12: false });
 
-    // Time Highlighting Logic
-    let count = displayedTimestamps.get(time) || 0;
+    // Time Highlighting Logic (Duplicate Check: Time + Method + URL)
+    // Create a composite key to identify duplicates
+    const dupKey = `${time}|${data.method}|${data.url}`;
+
+    let count = displayedTimestamps.get(dupKey) || 0;
     count++;
-    displayedTimestamps.set(time, count);
+    displayedTimestamps.set(dupKey, count);
 
     const timeColor = count > 1 ? '#ef4444' : '#64748b';
     if (count > 1) {
-        const existingItems = content.querySelectorAll(`[data-time="${time}"]`);
+        // Highlight duplicates
+        // We need to escape quotes in the selector or just iterate differently
+        // Since key contains URL which might be messy, let's use a simpler attribute matching if possible
+        // But attribute selector is robust if we escape quotes.
+        // Actually, key might have quotes. 
+        // Let's rely on iteration or storing a safe hash? 
+        // Simplest: `[data-dup-key="${escapeHtml(dupKey)}"]` might fail if escapeHtml logic doesn't cover all CSS selector chars.
+        // Safest: Iterate all or use a Map of [key -> [element list]]?
+        // Let's use `data-dup-key` but maybe Base64 encode the key for safety in selector? 
+        // Or just use the already working escape logic if we trust it for attributes. 
+        // Let's try iterating to find matches by checking property directly? No, querySelector is faster.
+        // Let's encoding the key to Hex or Base64 for the ID.
+
+        // Simple safe key for DOM attribute
+        const safeKey = btoa(encodeURIComponent(dupKey));
+
+        const existingItems = content.querySelectorAll(`[data-dup-key="${safeKey}"]`);
         existingItems.forEach(el => el.style.color = '#ef4444');
     }
+
+    const safeKey = btoa(encodeURIComponent(dupKey));
 
     const methodColor = data.method === 'GET' ? '#0284c7' : (data.method === 'POST' ? '#16a34a' : '#d97706');
 
@@ -695,9 +747,19 @@ function addRequestToOverlay(data) {
 
     // Parse URL Params
     let urlParamsHtml = '';
+    let displayUrl = data.url;
+    let fullUrl = data.url;
+
     try {
         const urlObj = new URL(data.url, window.location.origin);
-        data.url = urlObj.pathname;
+        // data.url might already be full or relative. 
+        // If it was captured by XHR/Fetch override, it's what was passed to open/fetch.
+        // If it's relative, URL constructor fixes it.
+        fullUrl = urlObj.href;
+        displayUrl = urlObj.pathname; // Show pathname, but keep params separate? 
+        // Or show pathname + search?
+        // User asked for "hover show full link".
+
         if (urlObj.searchParams.size > 0) {
             urlObj.searchParams.forEach((value, key) => {
                 urlParamsHtml += createRowHtml(key, value);
@@ -712,7 +774,7 @@ function addRequestToOverlay(data) {
 
     item.innerHTML = `
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-            <div style="display:flex; gap:8px; align-items:center;">
+            <div style="display:flex; gap:8px; align-items:center; flex: 1; min-width: 0;">
                 <span style="
                     background: ${methodColor}; 
                     color: #fff; 
@@ -720,6 +782,7 @@ function addRequestToOverlay(data) {
                     border-radius: 4px; 
                     font-weight: 700;
                     font-size: 12px;
+                    flex-shrink: 0;
                 ">${data.method}</span>
                 <span style="
                     color: ${statusColor}; 
@@ -728,25 +791,75 @@ function addRequestToOverlay(data) {
                     border: 1px solid ${statusColor};
                     padding: 2px 6px;
                     border-radius: 4px;
+                    flex-shrink: 0;
                 ">${status}</span>
-                <span class="mte-api-url" style="color:#334155; max-width:200px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${escapeHtml(data.url)}">${escapeHtml(data.url)}</span>
+                <span class="mte-api-url" style="color:#334155; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${escapeHtml(fullUrl)}">${escapeHtml(displayUrl)}</span>
             </div>
-            <span class="mte-timestamp" data-time="${time}" style="color:${timeColor}; font-size:12px; margin-left:8px; white-space:nowrap;">${time}</span>
+            <span class="mte-timestamp" data-dup-key="${safeKey}" style="
+                color:${timeColor}; 
+                font-size:11px; 
+                margin-left:8px; 
+                white-space:nowrap; 
+                flex-shrink: 0;
+                background: #fffbeb; /* Amber 50 */
+                border: 1px solid #fcd34d; /* Amber 300 */
+                padding: 2px 6px;
+                border-radius: 4px;
+                display: flex;
+                align-items: center;
+            ">
+                ${data.duration ? `<span style="color:#64748b; font-weight:600;">${data.duration}ms</span><span style="display:inline-block; width:1px; height:12px; background:#cbd5e1; margin:0 8px;"></span>` : ''}<span style="font-weight:600;">${time}</span>
+            </span>
         </div>
         
-        <div class="mte-tabs" style="display:flex; gap:10px; margin-bottom:10px; border-bottom:1px solid #e2e8f0; padding-bottom:5px;">
-            <button class="mte-tab-btn active" data-target="req-${itemId}">Request</button>
-            <button class="mte-tab-btn" data-target="res-${itemId}">Response</button>
+        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #e2e8f0; margin-bottom:10px; padding-bottom:8px;">
+             <div class="mte-tabs" style="display:inline-flex; background: #f1f5f9; padding: 3px; border-radius: 6px; gap: 2px;">
+                <button class="mte-tab-btn active" data-target="req-${itemId}">Payload</button>
+                <button class="mte-tab-btn" data-target="res-${itemId}">Response</button>
+            </div>
+            
+             <div style="position: relative;">
+                <button id="menu-btn-${itemId}" title="Actions" style="
+                    background: transparent;
+                    border: none;
+                    color: #64748b;
+                    font-size: 20px;
+                    font-weight: bold;
+                    cursor: pointer;
+                    padding: 0 8px;
+                    line-height: 1;
+                    border-radius: 4px;
+                    transition: all 0.2s;
+                ">⋮</button>
+                
+                <div id="menu-dropdown-${itemId}" style="
+                    display: none;
+                    position: absolute;
+                    right: 0;
+                    top: calc(100% + 4px);
+                    background: #ffffff;
+                    border: 1px solid #e2e8f0;
+                    border-radius: 8px;
+                    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+                    z-index: 50;
+                    min-width: 140px;
+                    overflow: hidden;
+                    flex-direction: column;
+                    padding: 4px;
+                ">
+                    <button class="mte-menu-item" id="action-curl-${itemId}">Copy cURL</button>
+                    <button class="mte-menu-item" id="action-payload-${itemId}">Copy Payload</button>
+                    <button class="mte-menu-item" id="action-response-${itemId}">Copy Response</button>
+                </div>
+            </div>
         </div>
 
         <div id="req-${itemId}" class="mte-tab-content" style="display:block; padding-top: 4px;">
-            ${urlParamsHtml || requestBodyHtml ?
-            `<div style="display:grid; grid-template-columns: auto 1fr; gap: 6px 16px;">
-                    ${urlParamsHtml}
-                    ${requestBodyHtml}
-                </div>` :
-            '<span style="color:#94a3b8; font-style:italic;">No payload</span>'
-        }
+            <div style="display:grid; grid-template-columns: auto 1fr; gap: 6px 16px;">
+                ${urlParamsHtml}
+                ${requestBodyHtml}
+            </div>
+            ${(!urlParamsHtml && !requestBodyHtml) ? '<span style="color:#94a3b8; font-style:italic;">No payload</span>' : ''}
         </div>
 
         <div id="res-${itemId}" class="mte-tab-content" style="display:none; padding-top: 4px;">
@@ -758,50 +871,267 @@ function addRequestToOverlay(data) {
     `;
 
     // Tab Logic
+    // Tab Logic - Segmented Control Style
     const tabs = item.querySelectorAll('.mte-tab-btn');
+
+    // Helper to apply styles based on state
+    const updateTabStyles = (t) => {
+        const isActive = t.classList.contains('active');
+        t.style.background = isActive ? '#6366f1' : 'transparent'; // Indigo 500 for active
+        t.style.color = isActive ? '#ffffff' : '#64748b';
+        t.style.boxShadow = isActive ? '0 2px 4px rgba(99, 102, 241, 0.3)' : 'none'; // Colored shadow
+        t.style.fontWeight = isActive ? '600' : '500';
+    };
+
     tabs.forEach(tab => {
         tab.style.cssText = `
-            background: transparent;
             border: none;
-            border-radius: 6px;
-            color: #64748b; /* Slate 500 */
+            border-radius: 4px;
             cursor: pointer;
-            font-size: 13px;
-            font-weight: 600;
-            padding: 6px 16px;
-            transition: all 0.2s;
+            font-size: 12px;
+            padding: 4px 16px;
+            transition: all 0.15s ease;
         `;
 
-        if (tab.classList.contains('active')) {
-            tab.style.background = '#6366f1'; /* Indigo 500 */
-            tab.style.color = '#ffffff';
-        }
+        // Apply initial state
+        updateTabStyles(tab);
 
         tab.addEventListener('click', () => {
+            // Reset all
             tabs.forEach(t => {
-                t.style.background = 'transparent';
-                t.style.color = '#64748b';
                 t.classList.remove('active');
+                updateTabStyles(t);
             });
-            tab.style.background = '#6366f1';
-            tab.style.color = '#ffffff';
+            // Set active
             tab.classList.add('active');
+            updateTabStyles(tab);
 
             const targetId = tab.getAttribute('data-target');
             item.querySelectorAll('.mte-tab-content').forEach(c => c.style.display = 'none');
             item.querySelector('#' + targetId).style.display = 'block';
         });
+
+        // Hover effects
+        tab.onmouseover = () => {
+            if (!tab.classList.contains('active')) {
+                tab.style.color = '#334155';
+                tab.style.background = 'rgba(255,255,255,0.5)';
+            }
+        };
+        tab.onmouseout = () => {
+            if (!tab.classList.contains('active')) updateTabStyles(tab);
+        };
+    });
+
+
+
+    // --- Actions Menu Logic ---
+    const menuBtn = item.querySelector(`#menu-btn-${itemId}`);
+    const menuDropdown = item.querySelector(`#menu-dropdown-${itemId}`);
+    const actionCurl = item.querySelector(`#action-curl-${itemId}`);
+    const actionPayload = item.querySelector(`#action-payload-${itemId}`);
+    const actionResponse = item.querySelector(`#action-response-${itemId}`);
+
+    // Style Menu Items (Base)
+    const menuItems = item.querySelectorAll('.mte-menu-item');
+    menuItems.forEach(mi => {
+        mi.style.cssText = `
+            display: block;
+            width: 100%;
+            text-align: left;
+            padding: 6px 12px;
+            background: transparent;
+            border: none;
+            color: #334155;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            border-radius: 4px;
+            transition: all 0.15s;
+            margin-bottom: 2px;
+        `;
+
+        mi.onmouseover = () => {
+            if (mi.style.cursor === 'not-allowed') {
+                mi.style.background = 'transparent';
+                return;
+            }
+            mi.style.background = '#f1f5f9';
+            mi.style.color = '#0f172a';
+        };
+        mi.onmouseout = () => {
+            if (mi.style.cursor === 'not-allowed') return;
+            mi.style.background = 'transparent';
+            mi.style.color = '#334155';
+        };
+    });
+
+    // Check availability
+    let hasPayload = false;
+    let urlParamsObj = {};
+
+    // Check Payload (Body)
+    if (data.payload) {
+        if (typeof data.payload === 'object') {
+            hasPayload = Object.keys(data.payload).length > 0;
+        } else if (typeof data.payload === 'string') {
+            hasPayload = data.payload.trim().length > 0;
+        }
+    }
+
+    // Check URL Params (Treat as payload if body is missing, for UI consistency)
+    if (!hasPayload) {
+        try {
+            const urlObj = new URL(data.url, window.location.origin);
+            if (urlObj.searchParams.size > 0) {
+                hasPayload = true;
+                urlParamsObj = Object.fromEntries(urlObj.searchParams.entries());
+            }
+        } catch (e) { }
+    }
+
+    let hasResponse = false;
+    if (data.response) {
+        if (typeof data.response === 'object') {
+            hasResponse = Object.keys(data.response).length > 0;
+        } else if (typeof data.response === 'string') {
+            hasResponse = data.response.trim().length > 0;
+        }
+    }
+
+    // Disable items if needed
+    if (!hasPayload) {
+        actionPayload.style.color = '#cbd5e1';
+        actionPayload.style.cursor = 'not-allowed';
+    }
+    if (!hasResponse) {
+        actionResponse.style.color = '#cbd5e1';
+        actionResponse.style.cursor = 'not-allowed';
+    }
+
+
+    // Remove last border logic not needed anymore
+
+
+    // Toggle Dropdown
+    menuBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const isHidden = menuDropdown.style.display === 'none';
+        // Close all other dropdowns
+        document.querySelectorAll('[id^="menu-dropdown-"]').forEach(el => el.style.display = 'none');
+        menuDropdown.style.display = isHidden ? 'flex' : 'none';
+    });
+
+    // Close on click outside
+    document.addEventListener('click', (e) => {
+        if (!menuBtn.contains(e.target) && !menuDropdown.contains(e.target)) {
+            menuDropdown.style.display = 'none';
+        }
+    });
+
+    // 1. Copy cURL
+    actionCurl.addEventListener('click', () => {
+        const cmd = generateCurlCommand({ ...data, url: fullUrl });
+        navigator.clipboard.writeText(cmd).then(() => showToast('cURL copied!'));
+        menuDropdown.style.display = 'none';
+    });
+
+    // 2. Copy Payload
+    actionPayload.addEventListener('click', () => {
+        if (!hasPayload) {
+            menuDropdown.style.display = 'none';
+            return;
+        }
+
+        // Prioritize actual body payload
+        if (data.payload && (typeof data.payload === 'object' ? Object.keys(data.payload).length > 0 : data.payload.length > 0)) {
+            copyJson(data.payload);
+        } else {
+            // Fallback to params
+            copyJson(urlParamsObj);
+        }
+        menuDropdown.style.display = 'none';
+    });
+
+    // 3. Copy Response
+    actionResponse.addEventListener('click', () => {
+        if (!hasResponse) {
+            menuDropdown.style.display = 'none';
+            return;
+        }
+        copyJson(data.response);
+        menuDropdown.style.display = 'none';
     });
 
     content.insertBefore(item, content.firstChild);
 
-    // Check search query immediately
-    const searchInput = apiMonitorOverlay.querySelector('#mte-api-search');
-    if (searchInput && searchInput.value) {
-        const query = searchInput.value.toLowerCase();
-        if (!item.textContent.toLowerCase().includes(query)) {
-            item.style.display = 'none';
+    // Update count
+    updateRequestCount();
+}
+
+function copyJson(data) {
+    let text = "";
+    try {
+        if (typeof data === 'string') {
+            // Try parse first to pretty print
+            const obj = JSON.parse(data);
+            text = JSON.stringify(obj, null, 2);
+        } else {
+            text = JSON.stringify(data, null, 2);
         }
+    } catch (e) {
+        text = String(data);
+    }
+    navigator.clipboard.writeText(text).then(() => showToast('JSON Copied!'));
+}
+
+function generateCurlCommand(data) {
+    let cmd = `curl -X ${data.method} "${data.url}"`;
+
+    if (data.headers) {
+        for (const [key, value] of Object.entries(data.headers)) {
+            // some headers are unsafe or context dependent, but we copy what we caught
+            cmd += ` -H "${key}: ${value}"`;
+        }
+    }
+
+    if (data.payload) {
+        let body = data.payload;
+        if (typeof body === 'object') {
+            try { body = JSON.stringify(body); } catch (e) { }
+        }
+        if (typeof body === 'string') {
+            body = body.replace(/'/g, "'\\''");
+            cmd += ` -d '${body}'`;
+        }
+    }
+    return cmd;
+}
+
+async function replayRequest(data) {
+    try {
+        const options = {
+            method: data.method,
+            headers: data.headers || {},
+        };
+
+        if (data.payload) {
+            if (typeof data.payload === 'object') {
+                options.body = JSON.stringify(data.payload);
+            } else {
+                options.body = data.payload;
+            }
+        }
+
+        // Clean headers?
+        // fetch will ignore some like 'Host', 'User-Agent' sometimes, but let's try sending as is.
+        // Important: Content-Type is often needed.
+
+        await fetch(data.url, options);
+        showToast('Request Replayed');
+    } catch (e) {
+        console.error(e);
+        showToast('Replay Failed: ' + e.message);
     }
 }
 
@@ -821,7 +1151,7 @@ function createRowHtml(key, value) {
 
     return `
         <div style="color: #64748b; font-weight: 600; font-size: 13px;">${escapeHtml(key)}</div>
-        <div style="color: #b91c1c; white-space: pre-wrap; word-break: break-all; font-family: Consolas, monospace; font-size: 13px;">${escapeHtml(displayValue)}</div>
+        <div style="color: #334155; white-space: pre-wrap; word-break: break-all; font-family: Consolas, monospace; font-size: 13px;">${escapeHtml(displayValue)}</div>
     `;
 }
 

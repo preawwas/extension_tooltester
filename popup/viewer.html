@@ -9,33 +9,74 @@
 </head>
 
 <body>
-    <div class="toolbar flex items-center p-4 gap-4">
-        <h2 class="text-lg font-bold">Responsive Viewer</h2>
-        <span id="target-url" class="text-muted">Loading...</span>
+    <div class="app-layout">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <h2 class="text-md font-bold">Devices</h2>
+            </div>
 
-        <div style="margin-left:auto; display:flex; gap:8px; align-items:center;">
-            <input type="number" id="custom-w" placeholder="W" class="input" style="width:60px; padding:4px;">
-            <span>x</span>
-            <input type="number" id="custom-h" placeholder="H" class="input" style="width:60px; padding:4px;">
-            <button id="add-device-btn" class="btn">Add</button>
-        </div>
+            <div class="device-category">
+                <h3>Notebook / Desktop</h3>
+                <div id="list-desktop" class="device-list"></div>
+            </div>
 
-        <button id="rotate-btn" class="btn">Rotate Screens ↻</button>
-    </div>
+            <div class="device-category">
+                <h3>Mobile</h3>
+                <div id="list-mobile" class="device-list"></div>
+            </div>
 
-    <div class="view-grid">
-        <div class="device-wrapper">
-            <div class="device-label">Mobile (375x667)</div>
-            <iframe id="frame-mobile" class="device-frame" width="375" height="667"></iframe>
-        </div>
-        <div class="device-wrapper">
-            <div class="device-label">Tablet (768x1024)</div>
-            <iframe id="frame-tablet" class="device-frame" width="768" height="1024"></iframe>
-        </div>
-        <div class="device-wrapper">
-            <div class="device-label">Desktop (1280x800)</div>
-            <iframe id="frame-desktop" class="device-frame" width="1280" height="800"></iframe>
-        </div>
+            <div class="device-category">
+                <h3>Tablet</h3>
+                <div id="list-tablet" class="device-list"></div>
+            </div>
+
+            <div class="device-category">
+                <h3>Custom</h3>
+                <div id="list-custom" class="device-list"></div>
+                <div class="add-custom-form">
+                    <div class="flex gap-2 mb-2">
+                        <input type="text" inputmode="numeric" id="custom-w" placeholder="W" class="input-xs"
+                            style="width: 50px;" maxlength="4"
+                            oninput="this.value = this.value.replace(/[^0-9]/g, '');">
+                        <span class="text-muted self-center">x</span>
+                        <input type="text" inputmode="numeric" id="custom-h" placeholder="H" class="input-xs"
+                            style="width: 50px;" maxlength="4"
+                            oninput="this.value = this.value.replace(/[^0-9]/g, '');">
+                    </div>
+                    <input type="text" id="custom-name" placeholder="Device Name" class="input-xs mb-3"
+                        style="width: 140px;" maxlength="20">
+                    <button id="add-device-btn" class="btn btn-sm w-full btn-primary">Add Device</button>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <div class="toolbar">
+                <span id="current-device-name" class="font-bold">Select a device</span>
+                <span id="current-device-dims" class="text-muted text-sm ml-2"></span>
+
+                <div class="spacer"></div>
+
+                <div class="flex items-center gap-2 mr-4 bg-slate-800 p-1 rounded">
+                    <span class="text-xs text-muted pl-2">Zoom:</span>
+                    <select id="zoom-select" class="input-xs" style="width:auto; border:none; background:transparent;">
+                        <option value="1">100%</option>
+                        <option value="0.75">75%</option>
+                        <option value="0.5">50%</option>
+                    </select>
+                </div>
+
+                <button id="rotate-btn" class="btn btn-sm btn-ghost" title="Rotate Screen">↻ Rotate</button>
+            </div>
+
+            <div class="viewport-container">
+                <div class="device-wrapper">
+                    <iframe id="main-frame" class="device-frame"></iframe>
+                </div>
+            </div>
+        </main>
     </div>
     <script src="viewer.js"></script>
 </body>

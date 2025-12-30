@@ -31,7 +31,14 @@
         "<all_urls>"
       ],
       "js": [
-        "content/content.js"
+        "content/utils.js",
+        "content/tools/font-scanner.js",
+        "content/tools/color-picker.js",
+        "content/tools/inspector.js",
+        "content/tools/live-editor.js",
+        "content/tools/api-monitor.js",
+        "content/manager.js",
+        "content/main.js"
       ],
       "css": [
         "content/content.css"

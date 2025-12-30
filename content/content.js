@@ -1,1472 +1,1616 @@
 console.log('Modern Tester Extension loaded');
 
-// Initialize Persistence (Pull Strategy)
-// Storage check moved down to ensure listener is ready first
+/**
+ * Utility Functions
+ */
+const Utils = {
+    rgbToHex(rgb) {
+        if (!rgb || rgb === 'transparent' || rgb === 'rgba(0, 0, 0, 0)') return 'transparent';
+        if (rgb.startsWith('#')) return rgb;
+        if (rgb === 'inherit' || rgb === 'initial') return rgb;
 
-// React to storage changes to sync state across frames (e.g. for API Monitor)
-chrome.storage.onChanged.addListener((changes, area) => {
-    if (area === 'local' && changes.activeTool) {
-        const newValue = changes.activeTool.newValue;
-        if (newValue === 'apiMonitor') {
-            toggleApiMonitor(true);
-        } else if (!newValue) {
-            // If tool cleared, turn off everything? 
-            if (apiMonitorActive) toggleApiMonitor(false);
-        }
+        // Extract numbers from rgb() or rgba()
+        const match = rgb.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+        if (!match) return rgb; // Return original if can't parse
+
+        const r = parseInt(match[1], 10);
+        const g = parseInt(match[2], 10);
+        const b = parseInt(match[3], 10);
+
+        // Check for NaN
+        if (isNaN(r) || isNaN(g) || isNaN(b)) return rgb;
+
+        return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1).toUpperCase();
+    },
+
+    createEl(tag, className, text = null) {
+        const el = document.createElement(tag);
+        if (className) el.className = className;
+        if (text) el.textContent = text;
+        return el;
+    },
+
+    escapeHtml(str) {
+        if (!str) return '';
+        return String(str)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
     }
-});
+};
 
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    const force = request.force !== undefined ? request.force : null;
+/**
+ * Inspector Tool
+ */
+class InspectorTool {
+    constructor(manager) {
+        this.manager = manager;
+        this.active = false;
+        this.hoveredElement = null;
+        this.tooltip = null;
+        this.panel = null;
+        this.selectedElement = null;
 
-    if (request.action === 'scanFonts') {
-        const fonts = scanFonts();
-        chrome.runtime.sendMessage({ action: 'fontScanResults', data: fonts });
-    } else if (request.action === 'toggleInspector') {
-        toggleInspector(force);
-    } else if (request.action === 'toggleColorPicker') {
-        toggleColorPicker(force);
-    } else if (request.action === 'highlightFont') {
-        highlightFont(request.fontSize);
-    } else if (request.action === 'toggleApiMonitor') {
-        toggleApiMonitor(force);
-    }
-});
-
-function scanFonts() {
-    const allElements = document.querySelectorAll('*');
-    const fontSizes = new Set();
-
-    allElements.forEach(el => {
-        // Basic check to ensure it's visible or has text
-        if (el.innerText && el.innerText.trim().length > 0) {
-            const style = window.getComputedStyle(el);
-            const size = style.fontSize;
-            fontSizes.add(size);
-        }
-    });
-
-    // Convert to array and sort numerically
-    return Array.from(fontSizes).sort((a, b) => {
-        return parseFloat(a) - parseFloat(b);
-    });
-}
-
-// State for Inspector
-let inspectorActive = false;
-let inspectorOverlay = null;
-let hoveredElement = null;
-
-// Notify background of state changes
-function updateToolState(tool, active, args = null) {
-    chrome.runtime.sendMessage({ action: 'toolStateUpdated', tool, active, args });
-}
-
-function toggleInspector(forceState = null) {
-    if (forceState !== null) {
-        inspectorActive = forceState;
-    } else {
-        inspectorActive = !inspectorActive;
+        this.handleHover = this.handleHover.bind(this);
+        this.handleClick = this.handleClick.bind(this);
+        this.handleMouseMove = this.handleMouseMove.bind(this);
     }
 
-    if (inspectorActive) {
-        document.body.style.cursor = 'crosshair';
-        document.addEventListener('mouseover', handleInspectorHover, true);
-        document.addEventListener('click', handleInspectorClick, true);
-        createInspectorOverlay();
-        showFloatingControl('Inspector Mode', () => toggleInspector(false));
-        showToast('Inspector Mode Active');
-    } else {
-        document.body.style.cursor = 'default';
-        document.removeEventListener('mouseover', handleInspectorHover, true);
-        document.removeEventListener('click', handleInspectorClick, true);
-        removeInspectorOverlay();
-        if (hoveredElement) {
-            hoveredElement.style.outline = '';
-        }
-        removeFloatingControl();
-        showToast('Inspector Mode Inactive');
-    }
-    updateToolState('inspector', inspectorActive);
-}
-
-// ... existing code ...
-
-
-
-// ... existing code ...
-
-
-
-// ... existing code ...
-
-
-
-function handleInspectorHover(e) {
-    if (!inspectorActive) return;
-    e.stopPropagation();
-
-    // Remove outline from previous
-    if (hoveredElement) {
-        hoveredElement.style.outline = '';
-    }
-
-    hoveredElement = e.target;
-    hoveredElement.style.outline = '2px solid #6366f1'; // Indigo outline
-}
-
-function handleInspectorClick(e) {
-    if (!inspectorActive) return;
-    e.preventDefault();
-    e.stopPropagation();
-
-    const el = e.target;
-    const computed = window.getComputedStyle(el);
-    const rect = el.getBoundingClientRect();
-
-    const info = {
-        tag: el.tagName.toLowerCase(),
-        width: Math.round(rect.width),
-        height: Math.round(rect.height),
-        color: computed.color,
-        bg: computed.backgroundColor,
-        fontSize: computed.fontSize,
-        fontFamily: computed.fontFamily,
-        margin: computed.margin,
-        padding: computed.padding
-    };
-
-    showInspectorModal(info, rect);
-}
-
-function createInspectorOverlay() {
-    // Only created once if needed, or managed by showInspectorModal
-}
-
-function removeInspectorOverlay() {
-    const modal = document.getElementById('mte-inspector-modal');
-    if (modal) modal.remove();
-}
-
-function showInspectorModal(info, rect) {
-    removeInspectorOverlay();
-
-    const modal = document.createElement('div');
-    modal.id = 'mte-inspector-modal';
-    modal.className = 'mte-modal';
-
-    // Position near the element but on screen
-    const top = rect.bottom + window.scrollY + 10;
-    const left = rect.left + window.scrollX;
-
-    modal.style.top = `${top}px`;
-    modal.style.left = `${left}px`;
-
-    modal.innerHTML = `
-        <div class="mte-modal-header">
-            <strong>&lt;${info.tag}&gt;</strong>
-            <button id="mte-close-modal">✕</button>
-        </div>
-        <div class="mte-modal-content">
-            <div class="mte-row"><span>Size:</span> <span>${info.width}x${info.height}px</span></div>
-            <div class="mte-row"><span>Color:</span> <span class="mte-color-swatch-box"><span class="mte-swatch" style="background:${info.color}"></span> ${info.color}</span></div>
-            <div class="mte-row"><span>Bg:</span> <span class="mte-color-swatch-box"><span class="mte-swatch" style="background:${info.bg}"></span> ${info.bg}</span></div>
-            <div class="mte-row"><span>Font:</span> <span>${info.fontSize} / ${info.fontFamily.split(',')[0]}</span></div>
-            <div class="mte-row"><span>Margin:</span> <span>${info.margin}</span></div>
-            <div class="mte-row"><span>Padding:</span> <span>${info.padding}</span></div>
-        </div>
-    `;
-
-    document.body.appendChild(modal);
-
-    document.getElementById('mte-close-modal').addEventListener('click', () => {
-        modal.remove();
-    });
-}
-
-function showToast(msg) {
-    const toast = document.createElement('div');
-    toast.className = 'mte-toast';
-    toast.textContent = msg;
-    document.body.appendChild(toast);
-    setTimeout(() => toast.remove(), 2000);
-}
-
-// State for Color Picker
-let colorPickerActive = false;
-let colorTooltip = null;
-
-function toggleColorPicker(forceState = null) {
-    if (forceState !== null) {
-        colorPickerActive = forceState;
-    } else {
-        colorPickerActive = !colorPickerActive;
-    }
-
-    // Disable inspector if active and enabling color picker
-    if (colorPickerActive && inspectorActive) {
-        toggleInspector(false);
-    }
-
-    if (colorPickerActive) {
-        document.body.style.cursor = 'crosshair'; // Or specific dropper cursor
-        document.addEventListener('mousemove', handleColorHover, true);
-        document.addEventListener('click', handleColorClick, true);
-        showFloatingControl('Color Picker Mode', () => toggleColorPicker(false));
-        showToast('Color Picker Active');
-    } else {
-        document.body.style.cursor = 'default';
-        document.removeEventListener('mousemove', handleColorHover, true);
-        document.removeEventListener('click', handleColorClick, true);
-        removeColorTooltip();
-        removeFloatingControl();
-        showToast('Color Picker Inactive');
-    }
-}
-
-function handleColorHover(e) {
-    if (!colorPickerActive) return;
-    e.stopPropagation();
-
-    const el = e.target;
-    // We try to get the color, or background color if it's set
-    const style = window.getComputedStyle(el);
-    let color = style.color;
-    // Simple heuristic: if bg color is not transparent/rgba(0,0,0,0), show that too or prioritize?
-    // User probably wants the color they "see".
-    // For now, let's show both if meaningful, or just what's under the cursor.
-    // Simpler: Just show computed Color and BackgroundColor.
-
-    showColorTooltip(e.clientX, e.clientY, style.color, style.backgroundColor);
-}
-
-function handleColorClick(e) {
-    if (!colorPickerActive) return;
-    e.preventDefault();
-    e.stopPropagation();
-
-    const style = window.getComputedStyle(e.target);
-    // Prefer background color if it's not transparent, else text color? 
-    // Or just copy the one causing the hover?
-    // Let's copy the Hex of the background if relevant, else color.
-    // Actually, let's just copy the Hex of the MAIN visible color.
-    // Simplification: Copy text color.
-
-    // Better UX: Click copies what's shown in the tooltip.
-    // Let's copy the hex value.
-    const colorHex = rgbToHex(style.color);
-    const bgHex = rgbToHex(style.backgroundColor);
-
-    const valToCopy = (style.backgroundColor !== 'rgba(0, 0, 0, 0)' && style.backgroundColor !== 'transparent') ? bgHex : colorHex;
-
-    navigator.clipboard.writeText(valToCopy).then(() => {
-        showToast(`Copied ${valToCopy}!`);
-        toggleColorPicker(); // Auto turn off? Or keep on? request says "button... press and show info", doesn't say auto off.
-    });
-}
-
-function showColorTooltip(x, y, color, bg) {
-    removeColorTooltip();
-
-    const tooltip = document.createElement('div');
-    tooltip.id = 'mte-color-tooltip';
-    tooltip.style.position = 'fixed';
-    tooltip.style.left = `${x + 15}px`;
-    tooltip.style.top = `${y + 15}px`;
-    tooltip.style.zIndex = '100000';
-    tooltip.style.background = '#0f172a';
-    tooltip.style.border = '1px solid #334155';
-    tooltip.style.padding = '8px';
-    tooltip.style.borderRadius = '6px';
-    tooltip.style.color = 'white';
-    tooltip.style.pointerEvents = 'none';
-
-    const colorHex = rgbToHex(color);
-    const bgHex = rgbToHex(bg);
-
-    tooltip.innerHTML = `
-        <div style="display:flex;align-items:center;gap:5px;margin-bottom:4px;">
-            <div style="width:12px;height:12px;background:${color};border:1px solid #fff;"></div>
-            <span>Text: ${colorHex}</span>
-        </div>
-        <div style="display:flex;align-items:center;gap:5px;">
-            <div style="width:12px;height:12px;background:${bg};border:1px solid #fff;"></div>
-            <span>Bg: ${bgHex}</span>
-        </div>
-    `;
-
-    document.body.appendChild(tooltip);
-}
-
-function removeColorTooltip() {
-    const t = document.getElementById('mte-color-tooltip');
-    if (t) t.remove();
-}
-
-function rgbToHex(rgb) {
-    if (!rgb || rgb === 'transparent') return 'transparent';
-    // Handle rgba
-    const sep = rgb.indexOf(",") > -1 ? "," : " ";
-    rgb = rgb.substr(4).split(")")[0].split(sep);
-
-    let r = (+rgb[0]).toString(16),
-        g = (+rgb[1]).toString(16),
-        b = (+rgb[2]).toString(16);
-
-    if (r.length == 1) r = "0" + r;
-    if (g.length == 1) g = "0" + g;
-    if (b.length == 1) b = "0" + b;
-
-    return "#" + r + g + b;
-}
-
-function highlightFont(targetSize) {
-    // Remove existing highlights
-    document.querySelectorAll('.mte-highlight').forEach(el => {
-        el.classList.remove('mte-highlight');
-    });
-
-    if (!targetSize) return;
-
-    const allElements = document.querySelectorAll('*');
-    let count = 0;
-    allElements.forEach(el => {
-        if (el.innerText && el.innerText.trim().length > 0) {
-            const style = window.getComputedStyle(el);
-            if (style.fontSize === targetSize) {
-                el.classList.add('mte-highlight');
-                count++;
-                // Scroll first one into view if needed? Maybe too intrusive.
-            }
-        }
-    });
-    console.log(`Highlighted ${count} elements with font-size: ${targetSize}`);
-}
-
-// State for API Monitor
-let apiMonitorActive = false; // exported or global state if needed
-let apiMonitorOverlay = null; // exported or global state
-let apiInterceptorInjected = false;
-let displayedTimestamps = new Map(); // Store counts of visible timestamps: timeString -> count
-let pendingRequests = []; // Queue for requests before overlay is ready
-
-function toggleApiMonitor(forceState = null) {
-    if (forceState !== null) {
-        apiMonitorActive = forceState;
-    } else {
-        apiMonitorActive = !apiMonitorActive;
-    }
-
-    if (apiMonitorActive) {
-        if (!apiInterceptorInjected) {
-            injectNetworkInterceptor();
-            apiInterceptorInjected = true;
-        }
-
-        // Only create overlay if we are the top frame
-        if (window.top === window.self) {
-            const showOverlay = () => {
-                if (!apiMonitorOverlay || !document.body.contains(apiMonitorOverlay)) {
-                    createApiMonitorOverlay();
-                    // Flush pending requests
-                    if (pendingRequests.length > 0) {
-                        pendingRequests.forEach(req => addRequestToOverlay(req));
-                        pendingRequests = [];
-                    }
-                } else {
-                    apiMonitorOverlay.style.display = 'flex';
-                }
-                showToast('API Monitor Active');
-            };
-
-            if (document.body) {
-                showOverlay();
-            } else {
-                document.addEventListener('DOMContentLoaded', showOverlay);
-            }
-        }
-
-        // Ensure listener is not added twice
-        window.removeEventListener('message', handleApiMessage);
-        window.addEventListener('message', handleApiMessage);
-    } else {
-        if (window.top === window.self) {
-            removeApiMonitorOverlay();
-            showToast('API Monitor Hidden');
-        }
-        // Don't remove listener, we keep listening to keep state ready or just simply toggle overlay visibility
-        // But for true "off", we might want to stop processing. 
-        // For simplicity: We keep listening but handleApiMessage checks 'apiMonitorActive'.
-    }
-
-    // Only update state reference if we are top frame to avoid spam? 
-    if (window.top === window.self) {
-        updateToolState('apiMonitor', apiMonitorActive);
-    }
-}
-
-// Initialize Message Listener JOINED with BUFFER logic
-// We listen immediately to catch 'document_start' messages even before storage returns.
-let isMonitorReady = false;
-let preInitQueue = [];
-
-window.addEventListener('message', handleApiMessage);
-
-// Initialize Persistence (Pull Strategy) moved here to clear up flow
-chrome.storage.local.get(['persistentMode', 'activeTool', 'activeToolArgs'], (result) => {
-    isMonitorReady = true;
-    if (result.persistentMode && result.activeTool === 'apiMonitor') {
-        console.log('Restoring tool state:', result.activeTool);
-        toggleApiMonitor(true);
-        // Flush pre-init queue
-        preInitQueue.forEach(msg => handleApiMessage(msg));
-    }
-    preInitQueue = [];
-});
-
-function injectNetworkInterceptor() {
-    const script = document.createElement('script');
-    script.src = chrome.runtime.getURL('content/interceptor.js');
-    script.onload = function () {
-        this.remove();
-    };
-    (document.head || document.documentElement).appendChild(script);
-}
-
-function handleApiMessage(e) {
-    // If we haven't checked storage yet, buffer everything!
-    if (!isMonitorReady && e.data && e.data.source === 'mte-api-monitor') {
-        preInitQueue.push(e);
-        return;
-    }
-
-    if (!apiMonitorActive) return;
-
-    // Validate message source
-    if (!e.data || e.data.source !== 'mte-api-monitor') return;
-
-    // console.log('MTE: content.js received message', e.data.url); // Removed log spam
-
-    // Filter 'pvg'
-    if (e.data.url && e.data.url.toLowerCase().includes('pvg')) {
-        console.log('MTE: pvg filtered', e.data.url);
-        return;
-    }
-
-    if (window.top === window.self) {
-        // We are the UI host, display it
-        if (apiMonitorOverlay) {
-            console.log('MTE: adding to overlay', e.data.url);
-            addRequestToOverlay(e.data);
+    toggle(forceState = null) {
+        this.active = forceState !== null ? forceState : !this.active;
+
+        if (this.active) {
+            document.body.style.cursor = 'crosshair';
+            document.addEventListener('mouseover', this.handleHover, true);
+            document.addEventListener('mousemove', this.handleMouseMove, true);
+            document.addEventListener('click', this.handleClick, true);
+            this.manager.showToast('Inspector Mode Active');
+            this.manager.showFloatingControl('Inspector Mode', () => this.toggle(false));
         } else {
-            console.log('MTE: overlay missing, queuing', e.data.url);
-            pendingRequests.push(e.data);
-        }
-    } else {
-        // We are a worker frame, forward to UI host via background
-        console.log('MTE: forwarding to background', e.data.url);
-        chrome.runtime.sendMessage({ action: 'forwardApiData', data: e.data });
-    }
-}
-
-// Listen for forwarded API data from other frames
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    if (request.action === 'receiveApiData' && window.top === window.self && apiMonitorOverlay) {
-        addRequestToOverlay(request.data);
-    }
-});
-
-function createApiMonitorOverlay() {
-    // Check if exists in DOM to avoid resetting data
-    const existing = document.getElementById('mte-api-monitor');
-    if (existing) {
-        apiMonitorOverlay = existing;
-        apiMonitorOverlay.style.display = 'flex';
-        return; // Preserve existing state
-    }
-
-    removeApiMonitorOverlay();
-
-    const overlay = document.createElement('div');
-    overlay.id = 'mte-api-monitor';
-    overlay.style.cssText = `
-        position: fixed;
-        bottom: 20px;
-        right: 20px;
-        width: 450px; /* Slightly wider for larger font */
-        height: auto;
-        max-height: 550px;
-        background: #f1f5f9; /* Slate 100 - Light Gray Background */
-        border: 1px solid #cbd5e1; /* Slate 300 */
-        border-radius: 8px;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.06);
-        z-index: 999999;
-        display: flex;
-        flex-direction: column;
-        font-family: 'Inter', system-ui, -apple-system, sans-serif;
-        color: #0f172a; /* Slate 900 - Dark Text */
-        resize: both;
-        overflow: hidden;
-    `;
-
-    overlay.innerHTML = `
-        <div id="mte-api-header" style="
-            padding: 12px;
-            background: #ffffff;
-            border-bottom: 1px solid #e2e8f0;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            align-items: center;
-            cursor: move;
-            user-select: none;
-        ">
-            <div style="display:flex; align-items:center; gap:8px;">
-                <span style="font-weight: 700; font-size: 15px; color: #1e293b;">API Monitor</span>
-                <span id="mte-req-count" style="
-                    background: #e2e8f0; 
-                    color: #475569; 
-                    font-size: 11px; 
-                    font-weight: 600; 
-                    padding: 2px 6px; 
-                    border-radius: 99px;
-                ">0</span>
-            </div>
-            <div style="display:flex; gap: 8px; align-items: center;">
-
-                 <button id="mte-api-clear" style="
-                    background: transparent;
-                    border: none;
-                    color: #64748b;
-                    padding: 6px 10px;
-                    border-radius: 4px;
-                    cursor: pointer;
-                    font-size: 12px;
-                    font-weight: 600;
-                    transition: all 0.2s;
-                ">Clear</button>
-                <button id="mte-api-close" style="
-                    background: transparent;
-                    border: none;
-                    color: #64748b;
-                    cursor: pointer;
-                    font-size: 18px;
-                    line-height: 1;
-                ">✕</button>
-            </div>
-        </div>
-        <div id="mte-api-content" style="
-            flex: 1;
-            overflow-y: auto;
-            padding: 12px;
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-        "></div>
-    `;
-
-    document.body.appendChild(overlay);
-    apiMonitorOverlay = overlay;
-
-    // Drag functionality
-    let isDragging = false;
-    let currentX;
-    let currentY;
-    let initialX;
-    let initialY;
-    let xOffset = 0;
-    let yOffset = 0;
-
-    const dragItem = overlay.querySelector('#mte-api-header');
-
-    dragItem.addEventListener('mousedown', dragStart);
-    document.addEventListener('mousemove', drag);
-    document.addEventListener('mouseup', dragEnd);
-
-    function dragStart(e) {
-        // Ignore if clicking input
-        if (e.target.tagName.toLowerCase() === 'input') return;
-
-        initialX = e.clientX - xOffset;
-        initialY = e.clientY - yOffset;
-        if (e.target === dragItem || dragItem.contains(e.target)) {
-            isDragging = true;
-        }
-    }
-
-    function drag(e) {
-        if (isDragging) {
-            e.preventDefault();
-            currentX = e.clientX - initialX;
-            currentY = e.clientY - initialY;
-            xOffset = currentX;
-            yOffset = currentY;
-            setTranslate(currentX, currentY, overlay);
-        }
-    }
-
-    function setTranslate(xPos, yPos, el) {
-        el.style.transform = `translate3d(${xPos}px, ${yPos}px, 0)`;
-    }
-
-    function dragEnd(e) {
-        initialX = currentX;
-        initialY = currentY;
-        isDragging = false;
-    }
-
-    // Event listeners
-    overlay.querySelector('#mte-api-close').addEventListener('click', () => {
-        toggleApiMonitor(false);
-    });
-
-    const clearBtn = overlay.querySelector('#mte-api-clear');
-    clearBtn.addEventListener('click', () => {
-        const content = overlay.querySelector('#mte-api-content');
-        if (content) content.innerHTML = '';
-        displayedTimestamps.clear(); // Reset timestamp tracker
-        updateRequestCount(0);
-    });
-
-    // Clear hover effect
-    clearBtn.onmouseover = () => { clearBtn.style.background = '#fee2e2'; clearBtn.style.color = '#ef4444'; };
-    clearBtn.onmouseout = () => { clearBtn.style.background = 'transparent'; clearBtn.style.color = '#64748b'; };
-}
-
-function updateRequestCount(n) {
-    const el = document.getElementById('mte-req-count');
-    if (el) el.textContent = n !== undefined ? n : (parseInt(el.textContent) + 1);
-}
-
-function removeApiMonitorOverlay() {
-    const el = document.getElementById('mte-api-monitor');
-    if (el) el.remove();
-    apiMonitorOverlay = null;
-}
-
-function addRequestToOverlay(data) {
-    if (!apiMonitorOverlay) return;
-
-    // Filter out image resources
-    const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.svg', '.webp', '.ico', '.tiff', '.bmp'];
-    try {
-        const urlObj = new URL(data.url, window.location.origin);
-        const pathname = urlObj.pathname.toLowerCase();
-        if (imageExtensions.some(ext => pathname.endsWith(ext))) {
-            return;
-        }
-    } catch (e) {
-        // If URL parsing fails, check the string directly (less reliable but safe fallback)
-        const lowerUrl = data.url.toLowerCase();
-        if (imageExtensions.some(ext => lowerUrl.endsWith(ext))) {
-            return;
-        }
-    }
-
-    // Exclude 'pvg' requests as per user request
-    if (data.url.toLowerCase().includes('pvg')) {
-        return;
-    }
-
-    const content = apiMonitorOverlay.querySelector('#mte-api-content');
-
-    // Remove placeholder if exists
-    const placeholder = content.querySelector('#mte-api-placeholder');
-    if (placeholder) placeholder.remove();
-
-    const item = document.createElement('div');
-    item.className = 'mte-api-item';
-    item.style.cssText = `
-        background: #ffffff;
-        border: 1px solid #e2e8f0;
-        border-radius: 6px;
-        padding: 14px;
-        font-size: 14px; /* Increased Font Size */
-        font-family: Consolas, Monaco, 'Andale Mono', monospace;
-        box-shadow: 0 1px 2px rgba(0,0,0,0.05);
-    `;
-
-    const time = new Date(data.timestamp || Date.now()).toLocaleTimeString('en-US', { hour12: false });
-
-    // Time Highlighting Logic (Duplicate Check: Time + Method + URL)
-    // Create a composite key to identify duplicates
-    const dupKey = `${time}|${data.method}|${data.url}`;
-
-    let count = displayedTimestamps.get(dupKey) || 0;
-    count++;
-    displayedTimestamps.set(dupKey, count);
-
-    const timeColor = count > 1 ? '#ef4444' : '#64748b';
-    if (count > 1) {
-        // Highlight duplicates
-        // We need to escape quotes in the selector or just iterate differently
-        // Since key contains URL which might be messy, let's use a simpler attribute matching if possible
-        // But attribute selector is robust if we escape quotes.
-        // Actually, key might have quotes. 
-        // Let's rely on iteration or storing a safe hash? 
-        // Simplest: `[data-dup-key="${escapeHtml(dupKey)}"]` might fail if escapeHtml logic doesn't cover all CSS selector chars.
-        // Safest: Iterate all or use a Map of [key -> [element list]]?
-        // Let's use `data-dup-key` but maybe Base64 encode the key for safety in selector? 
-        // Or just use the already working escape logic if we trust it for attributes. 
-        // Let's try iterating to find matches by checking property directly? No, querySelector is faster.
-        // Let's encoding the key to Hex or Base64 for the ID.
-
-        // Simple safe key for DOM attribute
-        const safeKey = btoa(encodeURIComponent(dupKey));
-
-        const existingItems = content.querySelectorAll(`[data-dup-key="${safeKey}"]`);
-        existingItems.forEach(el => el.style.color = '#ef4444');
-    }
-
-    const safeKey = btoa(encodeURIComponent(dupKey));
-
-    const methodColor = data.method === 'GET' ? '#0284c7' : (data.method === 'POST' ? '#16a34a' : '#d97706');
-
-    // Status Code Logic
-    const status = data.status || '---';
-    let statusColor = '#94a3b8'; // Default gray
-    if (status >= 200 && status < 300) statusColor = '#16a34a'; // Green
-    else if (status >= 400) statusColor = '#ef4444'; // Red
-    else if (status >= 300) statusColor = '#d97706'; // Yellow
-
-    // Function to parse params/json
-    const parseData = (input) => {
-        let html = '';
-        if (typeof input === 'string') {
-            try { input = JSON.parse(input); } catch (e) { }
-        }
-        if (typeof input === 'object' && input !== null) {
-            for (const [key, value] of Object.entries(input)) {
-                html += createRowHtml(key, value);
+            document.body.style.cursor = 'default';
+            document.removeEventListener('mouseover', this.handleHover, true);
+            document.removeEventListener('mousemove', this.handleMouseMove, true);
+            document.removeEventListener('click', this.handleClick, true);
+            this.removeTooltip();
+            this.removePanel();
+            if (this.hoveredElement) {
+                this.hoveredElement.style.outline = '';
             }
-        } else if (input) {
-            html += createRowHtml('body', String(input));
+            this.manager.showToast('Inspector Mode Inactive');
+            this.manager.removeFloatingControl();
         }
-        return html;
-    };
+        this.manager.updateToolState('inspector', this.active);
+    }
 
-    // Parse URL Params
-    let urlParamsHtml = '';
-    let displayUrl = data.url;
-    let fullUrl = data.url;
+    handleHover(e) {
+        if (!this.active) return;
 
-    try {
-        const urlObj = new URL(data.url, window.location.origin);
-        // data.url might already be full or relative. 
-        // If it was captured by XHR/Fetch override, it's what was passed to open/fetch.
-        // If it's relative, URL constructor fixes it.
-        fullUrl = urlObj.href;
-        displayUrl = urlObj.pathname; // Show pathname, but keep params separate? 
-        // Or show pathname + search?
-        // User asked for "hover show full link".
-
-        if (urlObj.searchParams.size > 0) {
-            urlObj.searchParams.forEach((value, key) => {
-                urlParamsHtml += createRowHtml(key, value);
-            });
+        // Skip MTE UI elements (panel, tooltip, floating control)
+        if (e.target.closest('#mte-inspector-panel') ||
+            e.target.closest('.mte-inspector-tooltip') ||
+            e.target.closest('.mte-floating-control')) {
+            return;
         }
-    } catch (e) { }
 
-    let requestBodyHtml = parseData(data.payload);
-    let responseBodyHtml = parseData(data.response);
+        e.stopPropagation();
 
-    const itemId = 'req-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+        if (this.hoveredElement && this.hoveredElement !== this.selectedElement) {
+            this.hoveredElement.style.outline = '';
+        }
 
-    item.innerHTML = `
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-            <div style="display:flex; gap:8px; align-items:center; flex: 1; min-width: 0;">
-                <span style="
-                    background: ${methodColor}; 
-                    color: #fff; 
-                    padding: 3px 8px; 
-                    border-radius: 4px; 
-                    font-weight: 700;
-                    font-size: 12px;
-                    flex-shrink: 0;
-                ">${data.method}</span>
-                <span style="
-                    color: ${statusColor}; 
-                    font-weight: 700; 
-                    font-size: 12px;
-                    border: 1px solid ${statusColor};
-                    padding: 2px 6px;
-                    border-radius: 4px;
-                    flex-shrink: 0;
-                ">${status}</span>
-                <span class="mte-api-url" style="color:#334155; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${escapeHtml(fullUrl)}">${escapeHtml(displayUrl)}</span>
+        this.hoveredElement = e.target;
+        if (this.hoveredElement !== this.selectedElement) {
+            this.hoveredElement.style.outline = '2px dashed #6366f1';
+        }
+
+        this.updateTooltip(e.target);
+    }
+
+    handleMouseMove(e) {
+        if (!this.active || !this.tooltip) return;
+
+        // Hide tooltip when over MTE UI
+        if (e.target.closest('#mte-inspector-panel') ||
+            e.target.closest('.mte-floating-control')) {
+            this.tooltip.style.display = 'none';
+            return;
+        }
+        this.tooltip.style.display = 'flex';
+
+        this.tooltip.style.left = `${e.clientX + 15}px`;
+        this.tooltip.style.top = `${e.clientY + 15}px`;
+    }
+
+    handleClick(e) {
+        if (!this.active) return;
+
+        // Skip MTE UI elements
+        if (e.target.closest('#mte-inspector-panel') ||
+            e.target.closest('.mte-inspector-tooltip') ||
+            e.target.closest('.mte-floating-control')) {
+            return;
+        }
+
+        e.preventDefault();
+        e.stopPropagation();
+
+        // Clear previous selection outline
+        if (this.selectedElement) {
+            this.selectedElement.style.outline = '';
+        }
+
+        this.selectedElement = e.target;
+        this.selectedElement.style.outline = '2px solid #6366f1';
+
+        const el = e.target;
+        const computed = window.getComputedStyle(el);
+        const rect = el.getBoundingClientRect();
+
+        const info = {
+            tag: el.tagName.toLowerCase(),
+            id: el.id || '',
+            classes: Array.from(el.classList).join(' ') || '',
+            width: Math.round(rect.width),
+            height: Math.round(rect.height),
+            color: computed.color,
+            bg: computed.backgroundColor,
+            fontSize: computed.fontSize,
+            fontFamily: computed.fontFamily.split(',')[0].replace(/"/g, ''),
+            margin: computed.margin,
+            padding: computed.padding,
+            position: computed.position,
+            display: computed.display
+        };
+
+        this.showPanel(info);
+    }
+
+    updateTooltip(el) {
+        if (!this.tooltip) {
+            this.tooltip = Utils.createEl('div', 'mte-inspector-tooltip');
+            document.body.appendChild(this.tooltip);
+        }
+
+        const rect = el.getBoundingClientRect();
+        const tag = el.tagName.toLowerCase();
+        const id = el.id ? `#${el.id}` : '';
+        const cls = el.classList.length > 0 ? `.${Array.from(el.classList).slice(0, 2).join('.')}` : '';
+
+        this.tooltip.innerHTML = `
+            <strong>${tag}${id}${cls}</strong>
+            <span>${Math.round(rect.width)} × ${Math.round(rect.height)}</span>
+        `;
+    }
+
+    removeTooltip() {
+        if (this.tooltip) {
+            this.tooltip.remove();
+            this.tooltip = null;
+        }
+    }
+
+    showPanel(info) {
+        this.removePanel();
+
+        const panel = Utils.createEl('div', 'mte-inspector-panel');
+        panel.id = 'mte-inspector-panel';
+
+        // Header
+        const header = Utils.createEl('div', 'mte-panel-header');
+        header.innerHTML = `<strong>&lt;${info.tag}&gt;</strong>`;
+        const closeBtn = Utils.createEl('button', 'mte-panel-close', '✕');
+        closeBtn.onclick = () => this.removePanel();
+        header.appendChild(closeBtn);
+        panel.appendChild(header);
+
+        // Content
+        const content = Utils.createEl('div', 'mte-panel-content');
+
+        // ID & Classes section
+        if (info.id || info.classes) {
+            const idSection = Utils.createEl('div', 'mte-panel-section');
+            if (info.id) idSection.appendChild(this.createRow('ID', `#${info.id}`));
+            if (info.classes) idSection.appendChild(this.createRow('Class', `.${info.classes.split(' ').join('.')}`));
+            content.appendChild(idSection);
+        }
+
+        // Size section
+        const sizeSection = Utils.createEl('div', 'mte-panel-section');
+        sizeSection.appendChild(this.createRow('Size', `${info.width} × ${info.height}px`));
+        sizeSection.appendChild(this.createRow('Display', info.display));
+        sizeSection.appendChild(this.createRow('Position', info.position));
+        content.appendChild(sizeSection);
+
+        // Typography section
+        const typoSection = Utils.createEl('div', 'mte-panel-section');
+        typoSection.appendChild(this.createColorRow('Color', info.color));
+        typoSection.appendChild(this.createColorRow('Background', info.bg));
+        typoSection.appendChild(this.createRow('Font', `${info.fontSize} ${info.fontFamily}`));
+        content.appendChild(typoSection);
+
+        // Spacing section
+        const spaceSection = Utils.createEl('div', 'mte-panel-section');
+        spaceSection.appendChild(this.createRow('Margin', info.margin));
+        spaceSection.appendChild(this.createRow('Padding', info.padding));
+        content.appendChild(spaceSection);
+
+        // Copy All button
+        const copyAllSection = Utils.createEl('div', 'mte-panel-section');
+        const copyAllBtn = Utils.createEl('button', 'mte-copy-all-btn', '📋 Copy All');
+        copyAllBtn.onclick = (e) => {
+            e.stopPropagation();
+            const allData = [
+                info.id ? `ID: #${info.id}` : '',
+                info.classes ? `Class: .${info.classes.split(' ').join('.')}` : '',
+                `Size: ${info.width} × ${info.height}px`,
+                `Display: ${info.display}`,
+                `Position: ${info.position}`,
+                `Color: ${info.color}`,
+                `Background: ${info.bg}`,
+                `Font: ${info.fontSize} ${info.fontFamily}`,
+                `Margin: ${info.margin}`,
+                `Padding: ${info.padding}`
+            ].filter(Boolean).join('\n');
+
+            navigator.clipboard.writeText(allData);
+            copyAllBtn.textContent = '✓ Copied!';
+            setTimeout(() => copyAllBtn.textContent = '📋 Copy All', 1500);
+        };
+        copyAllSection.appendChild(copyAllBtn);
+        content.appendChild(copyAllSection);
+
+        panel.appendChild(content);
+        document.body.appendChild(panel);
+        this.panel = panel;
+    }
+
+    createRow(label, value) {
+        const row = Utils.createEl('div', 'mte-panel-row');
+        row.innerHTML = `<span class="mte-label">${label}</span><span class="mte-value">${value}</span>`;
+
+        const copyBtn = Utils.createEl('button', 'mte-copy-btn', '📋');
+        copyBtn.title = 'Copy';
+        copyBtn.onclick = (e) => {
+            e.stopPropagation();
+            navigator.clipboard.writeText(value);
+            copyBtn.textContent = '✓';
+            setTimeout(() => copyBtn.textContent = '📋', 1000);
+        };
+        row.appendChild(copyBtn);
+        return row;
+    }
+
+    createColorRow(label, value) {
+        const row = Utils.createEl('div', 'mte-panel-row');
+        const swatch = `<span class="mte-swatch" style="background:${value}"></span>`;
+        row.innerHTML = `<span class="mte-label">${label}</span><span class="mte-value">${swatch}${value}</span>`;
+
+        const copyBtn = Utils.createEl('button', 'mte-copy-btn', '📋');
+        copyBtn.title = 'Copy';
+        copyBtn.onclick = (e) => {
+            e.stopPropagation();
+            navigator.clipboard.writeText(value);
+            copyBtn.textContent = '✓';
+            setTimeout(() => copyBtn.textContent = '📋', 1000);
+        };
+        row.appendChild(copyBtn);
+        return row;
+    }
+
+    removePanel() {
+        if (this.panel) {
+            this.panel.remove();
+            this.panel = null;
+        }
+        if (this.selectedElement) {
+            this.selectedElement.style.outline = '';
+            this.selectedElement = null;
+        }
+    }
+}
+
+/**
+ * Color Picker Tool
+ */
+class ColorPickerTool {
+    constructor(manager) {
+        this.manager = manager;
+        this.active = false;
+        this.tooltip = null;
+        this.panel = null;
+        this.selectedElement = null;
+
+        this.handleHover = this.handleHover.bind(this);
+        this.handleClick = this.handleClick.bind(this);
+    }
+
+    toggle(forceState = null) {
+        this.active = forceState !== null ? forceState : !this.active;
+
+        if (this.active && this.manager.inspector.active) {
+            this.manager.inspector.toggle(false);
+        }
+
+        if (this.active) {
+            document.body.style.cursor = 'crosshair';
+            document.addEventListener('mousemove', this.handleHover, true);
+            document.addEventListener('click', this.handleClick, true);
+            this.manager.showToast('Color Picker Active');
+            this.manager.showFloatingControl('Color Picker Mode', () => this.toggle(false));
+        } else {
+            document.body.style.cursor = 'default';
+            document.removeEventListener('mousemove', this.handleHover, true);
+            document.removeEventListener('click', this.handleClick, true);
+            this.removeTooltip();
+            this.removePanel();
+            this.manager.showToast('Color Picker Inactive');
+            this.manager.removeFloatingControl();
+        }
+    }
+
+    handleHover(e) {
+        if (!this.active) return;
+
+        // Skip MTE UI elements
+        if (e.target.closest('#mte-color-panel') ||
+            e.target.closest('.mte-color-tooltip') ||
+            e.target.closest('.mte-floating-control')) {
+            if (this.tooltip) this.tooltip.style.display = 'none';
+            return;
+        }
+
+        e.stopPropagation();
+
+        const el = e.target;
+        const style = window.getComputedStyle(el);
+        this.showTooltip(e.clientX, e.clientY, style.color, style.backgroundColor);
+    }
+
+    handleClick(e) {
+        if (!this.active) return;
+
+        // Skip MTE UI elements
+        if (e.target.closest('#mte-color-panel') ||
+            e.target.closest('.mte-color-tooltip') ||
+            e.target.closest('.mte-floating-control')) {
+            return;
+        }
+
+        e.preventDefault();
+        e.stopPropagation();
+
+        if (this.selectedElement) {
+            this.selectedElement.style.outline = '';
+        }
+
+        this.selectedElement = e.target;
+        this.selectedElement.style.outline = '2px solid #6366f1';
+
+        const style = window.getComputedStyle(e.target);
+        const info = {
+            textColor: style.color,
+            textColorHex: Utils.rgbToHex(style.color),
+            bgColor: style.backgroundColor,
+            bgColorHex: Utils.rgbToHex(style.backgroundColor),
+            borderColor: style.borderColor,
+            borderColorHex: Utils.rgbToHex(style.borderColor)
+        };
+
+        this.showPanel(info);
+    }
+
+    showTooltip(x, y, color, bg) {
+        if (!this.tooltip) {
+            this.tooltip = Utils.createEl('div', 'mte-color-tooltip');
+            this.tooltip.id = 'mte-color-tooltip';
+            document.body.appendChild(this.tooltip);
+        }
+
+        this.tooltip.style.display = 'block';
+        this.tooltip.style.left = `${x + 15}px`;
+        this.tooltip.style.top = `${y + 15}px`;
+
+        const colorHex = Utils.rgbToHex(color);
+        const bgHex = Utils.rgbToHex(bg);
+
+        this.tooltip.innerHTML = `
+            <div class="mte-color-row">
+                <span class="mte-swatch" style="background:${color}"></span>
+                <span>Text: ${colorHex}</span>
             </div>
-            <span class="mte-timestamp" data-dup-key="${safeKey}" style="
-                color:${timeColor}; 
-                font-size:11px; 
-                margin-left:8px; 
-                white-space:nowrap; 
-                flex-shrink: 0;
-                background: #fffbeb; /* Amber 50 */
-                border: 1px solid #fcd34d; /* Amber 300 */
-                padding: 2px 6px;
-                border-radius: 4px;
-                display: flex;
-                align-items: center;
-            ">
-                ${data.duration ? `<span style="color:#64748b; font-weight:600;">${data.duration}ms</span><span style="display:inline-block; width:1px; height:12px; background:#cbd5e1; margin:0 8px;"></span>` : ''}<span style="font-weight:600;">${time}</span>
+            <div class="mte-color-row">
+                <span class="mte-swatch" style="background:${bg}"></span>
+                <span>Bg: ${bgHex}</span>
+            </div>
+        `;
+    }
+
+    removeTooltip() {
+        if (this.tooltip) {
+            this.tooltip.remove();
+            this.tooltip = null;
+        }
+    }
+
+    showPanel(info) {
+        this.removePanel();
+
+        const panel = Utils.createEl('div', 'mte-color-panel');
+        panel.id = 'mte-color-panel';
+
+        // Header
+        const header = Utils.createEl('div', 'mte-panel-header');
+        header.innerHTML = '<strong>Color Picker</strong>';
+        const closeBtn = Utils.createEl('button', 'mte-panel-close', '✕');
+        closeBtn.onclick = () => this.removePanel();
+        header.appendChild(closeBtn);
+        panel.appendChild(header);
+
+        // Content
+        const content = Utils.createEl('div', 'mte-panel-content');
+
+        // Color rows
+        const section = Utils.createEl('div', 'mte-panel-section');
+        section.appendChild(this.createColorRow('Text Color', info.textColor, info.textColorHex));
+        section.appendChild(this.createColorRow('Background', info.bgColor, info.bgColorHex));
+        section.appendChild(this.createColorRow('Border', info.borderColor, info.borderColorHex));
+        content.appendChild(section);
+
+        // Copy All button
+        const copySection = Utils.createEl('div', 'mte-panel-section');
+        const copyAllBtn = Utils.createEl('button', 'mte-copy-all-btn', '📋 Copy All Colors');
+        copyAllBtn.onclick = (e) => {
+            e.stopPropagation();
+            const allData = [
+                `Text: ${info.textColorHex}`,
+                `Background: ${info.bgColorHex}`,
+                `Border: ${info.borderColorHex}`
+            ].join('\n');
+            navigator.clipboard.writeText(allData);
+            copyAllBtn.textContent = '✓ Copied!';
+            setTimeout(() => copyAllBtn.textContent = '📋 Copy All Colors', 1500);
+        };
+        copySection.appendChild(copyAllBtn);
+        content.appendChild(copySection);
+
+        panel.appendChild(content);
+        document.body.appendChild(panel);
+        this.panel = panel;
+    }
+
+    createColorRow(label, rgbValue, hexValue) {
+        const row = Utils.createEl('div', 'mte-panel-row');
+        row.innerHTML = `
+            <span class="mte-label">${label}</span>
+            <span class="mte-value">
+                <span class="mte-swatch" style="background:${rgbValue}"></span>
+                ${hexValue}
             </span>
-        </div>
-        
-        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #e2e8f0; margin-bottom:10px; padding-bottom:8px;">
-             <div class="mte-tabs" style="display:inline-flex; background: #f1f5f9; padding: 3px; border-radius: 6px; gap: 2px;">
-                <button class="mte-tab-btn active" data-target="req-${itemId}">Payload</button>
-                <button class="mte-tab-btn" data-target="res-${itemId}">Response</button>
-            </div>
-            
-             <div style="position: relative;">
-                <button id="menu-btn-${itemId}" title="Actions" style="
-                    background: transparent;
-                    border: none;
-                    color: #64748b;
-                    font-size: 20px;
-                    font-weight: bold;
-                    cursor: pointer;
-                    padding: 0 8px;
-                    line-height: 1;
-                    border-radius: 4px;
-                    transition: all 0.2s;
-                ">⋮</button>
-                
-                <div id="menu-dropdown-${itemId}" style="
-                    display: none;
-                    position: absolute;
-                    right: 0;
-                    top: calc(100% + 4px);
-                    background: #ffffff;
-                    border: 1px solid #e2e8f0;
-                    border-radius: 8px;
-                    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-                    z-index: 50;
-                    min-width: 140px;
-                    overflow: hidden;
-                    flex-direction: column;
-                    padding: 4px;
-                ">
-                    <button class="mte-menu-item" id="action-curl-${itemId}">Copy cURL</button>
-                    <button class="mte-menu-item" id="action-payload-${itemId}">Copy Payload</button>
-                    <button class="mte-menu-item" id="action-response-${itemId}">Copy Response</button>
-                </div>
-            </div>
-        </div>
-
-        <div id="req-${itemId}" class="mte-tab-content" style="display:block; padding-top: 4px;">
-            <div style="display:grid; grid-template-columns: auto 1fr; gap: 6px 16px;">
-                ${urlParamsHtml}
-                ${requestBodyHtml}
-            </div>
-            ${(!urlParamsHtml && !requestBodyHtml) ? '<span style="color:#94a3b8; font-style:italic;">No payload</span>' : ''}
-        </div>
-
-        <div id="res-${itemId}" class="mte-tab-content" style="display:none; padding-top: 4px;">
-             ${responseBodyHtml ?
-            `<div style="display:grid; grid-template-columns: auto 1fr; gap: 6px 16px;">${responseBodyHtml}</div>` :
-            '<span style="color:#94a3b8; font-style:italic;">No response data</span>'
-        }
-        </div>
-    `;
-
-    // Tab Logic
-    // Tab Logic - Segmented Control Style
-    const tabs = item.querySelectorAll('.mte-tab-btn');
-
-    // Helper to apply styles based on state
-    const updateTabStyles = (t) => {
-        const isActive = t.classList.contains('active');
-        t.style.background = isActive ? '#6366f1' : 'transparent'; // Indigo 500 for active
-        t.style.color = isActive ? '#ffffff' : '#64748b';
-        t.style.boxShadow = isActive ? '0 2px 4px rgba(99, 102, 241, 0.3)' : 'none'; // Colored shadow
-        t.style.fontWeight = isActive ? '600' : '500';
-    };
-
-    tabs.forEach(tab => {
-        tab.style.cssText = `
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 12px;
-            padding: 4px 16px;
-            transition: all 0.15s ease;
         `;
 
-        // Apply initial state
-        updateTabStyles(tab);
+        const copyBtn = Utils.createEl('button', 'mte-copy-btn', '📋');
+        copyBtn.title = 'Copy';
+        copyBtn.onclick = (e) => {
+            e.stopPropagation();
+            navigator.clipboard.writeText(hexValue);
+            copyBtn.textContent = '✓';
+            setTimeout(() => copyBtn.textContent = '📋', 1000);
+        };
+        row.appendChild(copyBtn);
+        return row;
+    }
 
-        tab.addEventListener('click', () => {
-            // Reset all
-            tabs.forEach(t => {
-                t.classList.remove('active');
-                updateTabStyles(t);
-            });
-            // Set active
-            tab.classList.add('active');
-            updateTabStyles(tab);
+    removePanel() {
+        if (this.panel) {
+            this.panel.remove();
+            this.panel = null;
+        }
+        if (this.selectedElement) {
+            this.selectedElement.style.outline = '';
+            this.selectedElement = null;
+        }
+    }
+}
 
-            const targetId = tab.getAttribute('data-target');
-            item.querySelectorAll('.mte-tab-content').forEach(c => c.style.display = 'none');
-            item.querySelector('#' + targetId).style.display = 'block';
+/**
+ * Live Editor Tool - 6 Modes
+ */
+class LiveEditorTool {
+    constructor(manager) {
+        this.manager = manager;
+        this.mode = null;
+        this.active = false;
+        this.styleElement = null;
+        this.cssPanel = null;
+
+        this.handleClick = this.handleClick.bind(this);
+        this.handleHover = this.handleHover.bind(this);
+        this.handleDragStart = this.handleDragStart.bind(this);
+        this.handleDrag = this.handleDrag.bind(this);
+        this.handleDragEnd = this.handleDragEnd.bind(this);
+
+        this.draggedElement = null;
+        this.dragOffset = { x: 0, y: 0 };
+    }
+
+    toggle(mode) {
+        // If same mode, toggle off
+        if (this.active && this.mode === mode) {
+            this.deactivate();
+            return;
+        }
+
+        // Deactivate previous mode
+        if (this.active) {
+            this.deactivate();
+        }
+
+        this.mode = mode;
+        this.active = true;
+        this.activate();
+    }
+
+    activate() {
+        const modeNames = {
+            editText: 'Edit Text',
+            moveElements: 'Move Elements',
+            deleteElements: 'Delete Elements',
+            cloneElements: 'Clone Elements',
+            outlineAll: 'Outline All',
+            editCSS: 'Edit CSS'
+        };
+
+        this.manager.showFloatingControl(`Live Editor: ${modeNames[this.mode]}`, () => this.deactivate());
+
+        switch (this.mode) {
+            case 'editText':
+                document.body.contentEditable = 'true';
+                document.body.style.cursor = 'text';
+                this.manager.showToast('Click anywhere to edit text');
+                break;
+
+            case 'moveElements':
+                document.body.style.cursor = 'move';
+                document.addEventListener('mousedown', this.handleDragStart, true);
+                document.addEventListener('mousemove', this.handleDrag, true);
+                document.addEventListener('mouseup', this.handleDragEnd, true);
+                document.addEventListener('mouseover', this.handleHover, true);
+                this.manager.showToast('Drag elements to move them');
+                break;
+
+            case 'deleteElements':
+                document.body.style.cursor = 'crosshair';
+                document.addEventListener('click', this.handleClick, true);
+                document.addEventListener('mouseover', this.handleHover, true);
+                this.addHoverStyle('rgba(239, 68, 68, 0.3)', '#ef4444');
+                this.manager.showToast('Click elements to delete');
+                break;
+
+            case 'cloneElements':
+                document.body.style.cursor = 'copy';
+                document.addEventListener('click', this.handleClick, true);
+                document.addEventListener('mouseover', this.handleHover, true);
+                this.addHoverStyle('rgba(16, 185, 129, 0.3)', '#10b981');
+                this.manager.showToast('Click element to clone');
+                break;
+
+            case 'outlineAll':
+                this.showAllOutlines();
+                this.manager.showToast('All elements outlined');
+                break;
+
+            case 'editCSS':
+                document.body.style.cursor = 'crosshair';
+                document.addEventListener('click', this.handleClick, true);
+                document.addEventListener('mouseover', this.handleHover, true);
+                this.addHoverStyle('rgba(99, 102, 241, 0.2)', '#6366f1');
+                this.manager.showToast('Click element to edit CSS');
+                break;
+        }
+    }
+
+    deactivate() {
+        document.body.contentEditable = 'false';
+        document.body.style.cursor = 'default';
+        document.removeEventListener('click', this.handleClick, true);
+        document.removeEventListener('mouseover', this.handleHover, true);
+        document.removeEventListener('mousedown', this.handleDragStart, true);
+        document.removeEventListener('mousemove', this.handleDrag, true);
+        document.removeEventListener('mouseup', this.handleDragEnd, true);
+
+        this.removeHoverStyle();
+        this.removeAllOutlines();
+        this.removeCSSPanel();
+
+        document.querySelectorAll('[data-mte-hovered]').forEach(el => {
+            el.removeAttribute('data-mte-hovered');
+            el.style.outline = '';
+            el.style.backgroundColor = '';
         });
 
-        // Hover effects
-        tab.onmouseover = () => {
-            if (!tab.classList.contains('active')) {
-                tab.style.color = '#334155';
-                tab.style.background = 'rgba(255,255,255,0.5)';
-            }
-        };
-        tab.onmouseout = () => {
-            if (!tab.classList.contains('active')) updateTabStyles(tab);
-        };
-    });
+        this.manager.removeFloatingControl();
+        this.manager.showToast('Live Editor Inactive');
+        this.active = false;
+        this.mode = null;
+    }
 
+    handleHover(e) {
+        if (e.target.closest('.mte-floating-control') || e.target.closest('#mte-css-panel')) return;
 
+        e.stopPropagation();
 
-    // --- Actions Menu Logic ---
-    const menuBtn = item.querySelector(`#menu-btn-${itemId}`);
-    const menuDropdown = item.querySelector(`#menu-dropdown-${itemId}`);
-    const actionCurl = item.querySelector(`#action-curl-${itemId}`);
-    const actionPayload = item.querySelector(`#action-payload-${itemId}`);
-    const actionResponse = item.querySelector(`#action-response-${itemId}`);
+        document.querySelectorAll('[data-mte-hovered]').forEach(el => {
+            el.removeAttribute('data-mte-hovered');
+        });
 
-    // Style Menu Items (Base)
-    const menuItems = item.querySelectorAll('.mte-menu-item');
-    menuItems.forEach(mi => {
-        mi.style.cssText = `
-            display: block;
-            width: 100%;
-            text-align: left;
-            padding: 6px 12px;
-            background: transparent;
-            border: none;
-            color: #334155;
-            font-size: 13px;
-            font-weight: 500;
-            cursor: pointer;
-            border-radius: 4px;
-            transition: all 0.15s;
-            margin-bottom: 2px;
-        `;
+        e.target.setAttribute('data-mte-hovered', 'true');
+    }
 
-        mi.onmouseover = () => {
-            if (mi.style.cursor === 'not-allowed') {
-                mi.style.background = 'transparent';
-                return;
-            }
-            mi.style.background = '#f1f5f9';
-            mi.style.color = '#0f172a';
-        };
-        mi.onmouseout = () => {
-            if (mi.style.cursor === 'not-allowed') return;
-            mi.style.background = 'transparent';
-            mi.style.color = '#334155';
-        };
-    });
+    handleClick(e) {
+        if (e.target.closest('.mte-floating-control') || e.target.closest('#mte-css-panel')) return;
 
-    // Check availability
-    let hasPayload = false;
-    let urlParamsObj = {};
+        e.preventDefault();
+        e.stopPropagation();
 
-    // Check Payload (Body)
-    if (data.payload) {
-        if (typeof data.payload === 'object') {
-            hasPayload = Object.keys(data.payload).length > 0;
-        } else if (typeof data.payload === 'string') {
-            hasPayload = data.payload.trim().length > 0;
+        const el = e.target;
+
+        switch (this.mode) {
+            case 'deleteElements':
+                el.remove();
+                this.manager.showToast('Element deleted');
+                break;
+
+            case 'cloneElements':
+                const clone = el.cloneNode(true);
+                el.parentNode.insertBefore(clone, el.nextSibling);
+                this.manager.showToast('Element cloned');
+                break;
+
+            case 'editCSS':
+                this.showCSSPanel(el);
+                break;
         }
     }
 
-    // Check URL Params (Treat as payload if body is missing, for UI consistency)
-    if (!hasPayload) {
+    handleDragStart(e) {
+        if (e.target.closest('.mte-floating-control')) return;
+        if (e.button !== 0) return;
+
+        e.preventDefault();
+        e.stopPropagation();
+
+        this.draggedElement = e.target;
+        const rect = this.draggedElement.getBoundingClientRect();
+
+        // Store original position info
+        const style = window.getComputedStyle(this.draggedElement);
+        if (style.position === 'static') {
+            this.draggedElement.style.position = 'relative';
+        }
+
+        this.dragOffset = {
+            x: e.clientX - rect.left,
+            y: e.clientY - rect.top,
+            startX: e.clientX,
+            startY: e.clientY,
+            origTransform: style.transform === 'none' ? '' : style.transform
+        };
+
+        this.draggedElement.style.opacity = '0.8';
+        this.draggedElement.style.zIndex = '99999';
+    }
+
+    handleDrag(e) {
+        if (!this.draggedElement) return;
+
+        e.preventDefault();
+
+        const dx = e.clientX - this.dragOffset.startX;
+        const dy = e.clientY - this.dragOffset.startY;
+
+        this.draggedElement.style.transform = `translate(${dx}px, ${dy}px)`;
+    }
+
+    handleDragEnd(e) {
+        if (!this.draggedElement) return;
+
+        this.draggedElement.style.opacity = '';
+        this.draggedElement.style.zIndex = '';
+        this.draggedElement = null;
+    }
+
+    addHoverStyle(bgColor, outlineColor) {
+        this.styleElement = document.createElement('style');
+        this.styleElement.id = 'mte-live-editor-style';
+        this.styleElement.textContent = `
+            [data-mte-hovered] {
+                outline: 2px dashed ${outlineColor} !important;
+                background-color: ${bgColor} !important;
+            }
+        `;
+        document.head.appendChild(this.styleElement);
+    }
+
+    removeHoverStyle() {
+        if (this.styleElement) {
+            this.styleElement.remove();
+            this.styleElement = null;
+        }
+    }
+
+    showAllOutlines() {
+        this.styleElement = document.createElement('style');
+        this.styleElement.id = 'mte-outline-all-style';
+        this.styleElement.textContent = `
+            * {
+                outline: 1px solid rgba(99, 102, 241, 0.5) !important;
+            }
+            *:hover {
+                outline: 2px solid #6366f1 !important;
+            }
+        `;
+        document.head.appendChild(this.styleElement);
+    }
+
+    removeAllOutlines() {
+        const style = document.getElementById('mte-outline-all-style');
+        if (style) style.remove();
+    }
+
+    showCSSPanel(el) {
+        this.removeCSSPanel();
+        this.selectedCSSElement = el;
+
+        const computed = window.getComputedStyle(el);
+        const panel = Utils.createEl('div', 'mte-css-panel');
+        panel.id = 'mte-css-panel';
+
+        panel.innerHTML = `
+            <div class="mte-panel-header">
+                <strong>Edit CSS</strong>
+                <button class="mte-panel-close" id="mte-css-close">✕</button>
+            </div>
+            <div class="mte-panel-content" style="padding: 12px; max-height: 400px; overflow-y: auto;">
+                <div style="margin-bottom: 12px; font-size: 11px; color: #64748b;">&lt;${el.tagName.toLowerCase()}&gt;</div>
+                
+                <div class="mte-css-group">
+                    <label>Width</label>
+                    <input type="text" data-prop="width" value="${computed.width}">
+                </div>
+                <div class="mte-css-group">
+                    <label>Height</label>
+                    <input type="text" data-prop="height" value="${computed.height}">
+                </div>
+                <div class="mte-css-group">
+                    <label>Background</label>
+                    <div style="display: flex; gap: 6px;">
+                        <input type="color" data-prop="backgroundColor" value="${Utils.rgbToHex(computed.backgroundColor)}" style="width: 40px; height: 32px; padding: 2px; border: 1px solid #334155; border-radius: 4px; cursor: pointer;">
+                        <input type="text" data-prop="backgroundColor" value="${computed.backgroundColor}" style="flex: 1;">
+                    </div>
+                </div>
+                <div class="mte-css-group">
+                    <label>Color</label>
+                    <div style="display: flex; gap: 6px;">
+                        <input type="color" data-prop="color" value="${Utils.rgbToHex(computed.color)}" style="width: 40px; height: 32px; padding: 2px; border: 1px solid #334155; border-radius: 4px; cursor: pointer;">
+                        <input type="text" data-prop="color" value="${computed.color}" style="flex: 1;">
+                    </div>
+                </div>
+                <div class="mte-css-group">
+                    <label>Font Size</label>
+                    <input type="text" data-prop="fontSize" value="${computed.fontSize}">
+                </div>
+                <div class="mte-css-group">
+                    <label>Padding</label>
+                    <input type="text" data-prop="padding" value="${computed.padding}">
+                </div>
+                <div class="mte-css-group">
+                    <label>Margin</label>
+                    <input type="text" data-prop="margin" value="${computed.margin}">
+                </div>
+                <div class="mte-css-group">
+                    <label>Border</label>
+                    <input type="text" data-prop="border" value="${computed.border}">
+                </div>
+                <div class="mte-css-group">
+                    <label>Border Radius</label>
+                    <input type="text" data-prop="borderRadius" value="${computed.borderRadius}">
+                </div>
+                
+                <button id="mte-css-apply" style="
+                    width: 100%;
+                    margin-top: 12px;
+                    padding: 10px;
+                    background: #6366f1;
+                    color: #fff;
+                    border: none;
+                    border-radius: 6px;
+                    cursor: pointer;
+                    font-weight: 500;
+                ">Apply All</button>
+            </div>
+            <style>
+                .mte-css-group {
+                    margin-bottom: 10px;
+                }
+                .mte-css-group label {
+                    display: block;
+                    font-size: 11px;
+                    color: #94a3b8;
+                    margin-bottom: 4px;
+                }
+                .mte-css-group input[type="text"] {
+                    width: 100%;
+                    padding: 6px 8px;
+                    background: #1e293b;
+                    border: 1px solid #334155;
+                    border-radius: 4px;
+                    color: #e2e8f0;
+                    font-size: 12px;
+                    font-family: monospace;
+                }
+                .mte-css-group input[type="text"]:focus {
+                    outline: none;
+                    border-color: #6366f1;
+                }
+            </style>
+        `;
+
+        document.body.appendChild(panel);
+        this.cssPanel = panel;
+
+        // Close button
+        document.getElementById('mte-css-close').onclick = () => this.removeCSSPanel();
+
+        // Sync color picker with text input
+        panel.querySelectorAll('input[type="color"]').forEach(colorInput => {
+            colorInput.addEventListener('input', (e) => {
+                const prop = e.target.dataset.prop;
+                const textInput = panel.querySelector(`input[type="text"][data-prop="${prop}"]`);
+                if (textInput) textInput.value = e.target.value;
+                // Live preview
+                el.style[prop] = e.target.value;
+            });
+        });
+
+        // Live preview on text change
+        panel.querySelectorAll('input[type="text"]').forEach(input => {
+            input.addEventListener('input', (e) => {
+                const prop = e.target.dataset.prop;
+                el.style[prop] = e.target.value;
+            });
+        });
+
+        // Apply all button
+        document.getElementById('mte-css-apply').onclick = () => {
+            panel.querySelectorAll('input[type="text"]').forEach(input => {
+                const prop = input.dataset.prop;
+                if (prop) el.style[prop] = input.value;
+            });
+            this.manager.showToast('CSS applied');
+        };
+    }
+
+    removeCSSPanel() {
+        if (this.cssPanel) {
+            this.cssPanel.remove();
+            this.cssPanel = null;
+        }
+    }
+}
+
+/**
+ * API Monitor Tool
+ */
+class ApiMonitorTool {
+    constructor(manager) {
+        this.manager = manager;
+        this.active = false;
+        this.overlay = null;
+        this.interceptorInjected = false;
+        this.displayedTimestamps = new Map();
+        this.pendingRequests = [];
+
+        this.handleMessage = this.handleMessage.bind(this);
+    }
+
+    toggle(forceState = null) {
+        this.active = forceState !== null ? forceState : !this.active;
+
+        if (this.active) {
+            if (!this.interceptorInjected) {
+                this.injectInterceptor();
+                this.interceptorInjected = true;
+            }
+
+            if (window.top === window.self) {
+                this.showOverlay();
+            }
+
+            window.removeEventListener('message', this.handleMessage);
+            window.addEventListener('message', this.handleMessage);
+            this.manager.showToast('API Monitor Active');
+        } else {
+            if (window.top === window.self) {
+                this.removeOverlay();
+                this.manager.showToast('API Monitor Hidden');
+            }
+        }
+
+        if (window.top === window.self) {
+            this.manager.updateToolState('apiMonitor', this.active);
+        }
+    }
+
+    injectInterceptor() {
+        const script = document.createElement('script');
+        script.src = chrome.runtime.getURL('content/interceptor.js');
+        script.onload = function () { this.remove(); };
+        (document.head || document.documentElement).appendChild(script);
+    }
+
+    handleMessage(e) {
+        // Pre-init buffer handled by manager if needed, but here check source
+        if (!e.data || e.data.source !== 'mte-api-monitor') return;
+        if (!this.active) return;
+
+        // Filter 'pvg' (keep existing logic)
+        if (e.data.url && e.data.url.toLowerCase().includes('pvg')) return;
+
+        if (window.top === window.self) {
+            if (this.overlay) {
+                this.addRequest(e.data);
+            } else {
+                this.pendingRequests.push(e.data);
+            }
+        } else {
+            chrome.runtime.sendMessage({ action: 'forwardApiData', data: e.data });
+        }
+    }
+
+    showOverlay() {
+        const existing = document.getElementById('mte-api-monitor');
+        if (existing) {
+            this.overlay = existing;
+            this.overlay.style.display = 'flex';
+            return;
+        }
+
+        const overlay = Utils.createEl('div');
+        overlay.id = 'mte-api-monitor';
+
+        // Header
+        const header = Utils.createEl('div');
+        header.id = 'mte-api-header';
+
+        const left = Utils.createEl('div', 'mte-api-controls');
+        const title = Utils.createEl('span', 'mte-api-title', 'API Monitor');
+        const count = Utils.createEl('span', '', '0');
+        count.id = 'mte-req-count';
+        left.appendChild(title);
+        left.appendChild(count);
+
+        const right = Utils.createEl('div', 'mte-api-controls');
+        const clearBtn = Utils.createEl('button', '', 'Clear');
+        clearBtn.id = 'mte-api-clear';
+        clearBtn.onclick = () => this.clearRequests();
+
+        const closeBtn = Utils.createEl('button', '', '✕');
+        closeBtn.id = 'mte-api-close';
+        closeBtn.onclick = () => this.toggle(false);
+
+        right.appendChild(clearBtn);
+        right.appendChild(closeBtn);
+
+        header.appendChild(left);
+        header.appendChild(right);
+
+        // Content
+        const content = Utils.createEl('div');
+        content.id = 'mte-api-content';
+
+        overlay.appendChild(header);
+        overlay.appendChild(content);
+
+        document.body.appendChild(overlay);
+        this.overlay = overlay;
+
+        // Initialize Drag
+        this.initDrag(header, overlay);
+
+        // Flush pending
+        this.pendingRequests.forEach(req => this.addRequest(req));
+        this.pendingRequests = [];
+    }
+
+    removeOverlay() {
+        if (this.overlay) this.overlay.remove();
+        this.overlay = null;
+    }
+
+    clearRequests() {
+        if (!this.overlay) return;
+        const content = this.overlay.querySelector('#mte-api-content');
+        if (content) content.innerHTML = '';
+        this.displayedTimestamps.clear();
+        const countEl = document.getElementById('mte-req-count');
+        if (countEl) countEl.textContent = '0';
+    }
+
+    initDrag(handle, target) {
+        let isDragging = false, startX, startY, initialX, initialY, xOffset = 0, yOffset = 0;
+
+        handle.addEventListener('mousedown', dragStart);
+        document.addEventListener('mousemove', drag);
+        document.addEventListener('mouseup', dragEnd);
+
+        function dragStart(e) {
+            if (e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT') return;
+            initialX = e.clientX - xOffset;
+            initialY = e.clientY - yOffset;
+            if (e.target === handle || handle.contains(e.target)) {
+                isDragging = true;
+            }
+        }
+
+        function drag(e) {
+            if (isDragging) {
+                e.preventDefault();
+                const currentX = e.clientX - initialX;
+                const currentY = e.clientY - initialY;
+                xOffset = currentX;
+                yOffset = currentY;
+                target.style.transform = `translate3d(${currentX}px, ${currentY}px, 0)`;
+            }
+        }
+
+        function dragEnd() {
+            isDragging = false;
+        }
+    }
+
+    addRequest(data) {
+        if (!this.overlay) return;
+
+        // Filter images
+        const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.svg', '.webp', '.ico', '.tiff', '.bmp'];
+        try {
+            if (data.url) {
+                const urlLower = data.url.toLowerCase().split('?')[0];
+                if (imageExtensions.some(ext => urlLower.endsWith(ext))) return;
+            }
+        } catch (e) { }
+
+        const content = this.overlay.querySelector('#mte-api-content');
+        const itemId = `api-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+        const item = Utils.createEl('div', 'mte-api-item');
+        item.id = itemId;
+
+        // Full URL for cURL
+        let fullUrl = data.url;
+        try {
+            fullUrl = new URL(data.url, window.location.origin).href;
+        } catch (e) { }
+
+        // === Top Row (Time on left, Duration on right) ===
+        const topRow = Utils.createEl('div', 'mte-top-row');
+        topRow.style.cssText = 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;';
+
+        // Time on left
+        const timeStr = new Date(data.timestamp || Date.now()).toLocaleTimeString('en-US', { hour12: false });
+        const dupKey = `${timeStr}|${data.method}|${data.url}`;
+        let dupCount = (this.displayedTimestamps.get(dupKey) || 0) + 1;
+        this.displayedTimestamps.set(dupKey, dupCount);
+
+        // Time badge (Header style)
+        const isDup = dupCount > 1;
+        const timeSpan = Utils.createEl('span', 'mte-time', timeStr);
+        timeSpan.style.cssText = `
+            font-size: 11px; font-weight: 700; letter-spacing: 0.5px;
+            color: ${isDup ? '#dc2626' : '#475569'}; 
+            background: ${isDup ? '#fee2e2' : '#e2e8f0'}; 
+            padding: 2px 8px; border-radius: 4px;
+        `;
+        topRow.appendChild(timeSpan);
+
+        // Duration on right with color coding
+        if (data.duration) {
+            const dur = parseInt(data.duration);
+            let durColor, durBg, durBorder;
+            if (dur < 250) {
+                // Fast - Green
+                durColor = '#15803d'; durBg = '#dcfce7'; durBorder = '#86efac';
+            } else if (dur < 500) {
+                // Medium - Yellow
+                durColor = '#a16207'; durBg = '#fef9c3'; durBorder = '#fde047';
+            } else {
+                // Slow - Red
+                durColor = '#b91c1c'; durBg = '#fee2e2'; durBorder = '#fca5a5';
+            }
+            const durationSpan = Utils.createEl('span', 'mte-duration', `${data.duration}ms`);
+            durationSpan.style.cssText = `
+                font-size: 11px; font-weight: 600; 
+                color: ${durColor}; background: ${durBg}; 
+                border: 1px solid ${durBorder};
+                padding: 2px 8px; border-radius: 4px;
+            `;
+            topRow.appendChild(durationSpan);
+        }
+
+        item.appendChild(topRow);
+
+        // === Header Row (Method, Status, URL) ===
+        const header = Utils.createEl('div', 'mte-api-item-header');
+        header.style.cssText = 'display: flex; align-items: center; gap: 8px; margin-bottom: 10px;';
+
+        const methodClasses = `mte-method-badge mte-method-${data.method}`;
+        const methodSpan = Utils.createEl('span', methodClasses, data.method);
+
+        let statusClass = 'mte-status-DEFAULT';
+        const s = data.status;
+        if (s >= 200 && s < 300) statusClass = 'mte-status-2xx';
+        else if (s >= 300 && s < 400) statusClass = 'mte-status-3xx';
+        else if (s >= 400) statusClass = 'mte-status-4xx';
+
+        const statusSpan = Utils.createEl('span', `mte-status-badge ${statusClass}`, s);
+
+        let pathname = data.url;
+        try {
+            const urlObj = new URL(data.url, window.location.origin);
+            pathname = urlObj.pathname;
+        } catch (e) { }
+
+        const urlSpan = Utils.createEl('span', 'mte-api-url', pathname);
+        urlSpan.title = fullUrl;
+        urlSpan.style.cssText = 'flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #334155; font-size: 13px;';
+
+        header.appendChild(methodSpan);
+        header.appendChild(statusSpan);
+        header.appendChild(urlSpan);
+        item.appendChild(header);
+
+        // === Menu Button (will be added to tabs row) ===
+        // === Menu Button (will be added to tabs row) ===
+        const menuBtn = Utils.createEl('button', 'mte-menu-btn', '⋮');
+        menuBtn.id = `menu-btn-${itemId}`;
+        menuBtn.style.cssText = `
+            background: transparent; border: none; 
+            padding: 2px 6px; cursor: pointer; font-size: 16px; color: #94a3b8;
+            font-weight: bold; line-height: 1; border-radius: 4px; transition: all 0.2s;
+        `;
+        menuBtn.onmouseover = () => { menuBtn.style.background = '#f1f5f9'; };
+        menuBtn.onmouseout = () => { menuBtn.style.background = 'transparent'; };
+
+        // Dropdown Menu
+        // Use top instead of bottom to open downwards
+        const menuDropdown = Utils.createEl('div', 'mte-menu-dropdown');
+        menuDropdown.id = `menu-dropdown-${itemId}`;
+        menuDropdown.style.cssText = `
+            display: none; position: absolute; right: 0; top: calc(100% + 2px);
+            background: #fff; border: 1px solid #e2e8f0; border-radius: 6px;
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06);
+            z-index: 50; min-width: 120px; flex-direction: column; padding: 2px;
+        `;
+
+        // Check for payload data (body OR url params)
+        let urlParamsObj = {};
+        try {
+            const urlObj = new URL(data.url, window.location.origin);
+            if (urlObj.search && urlObj.search.length > 1) {
+                urlObj.searchParams.forEach((value, key) => {
+                    urlParamsObj[key] = value;
+                });
+            }
+        } catch (e) { }
+
+        const hasBodyPayload = data.payload && (typeof data.payload === 'object' ? Object.keys(data.payload).length > 0 : String(data.payload).trim().length > 0);
+        const hasUrlParams = Object.keys(urlParamsObj).length > 0;
+        const hasPayloadData = hasBodyPayload || hasUrlParams;
+        const hasResponseData = data.response && String(data.response).trim().length > 0;
+
+        const createMenuItem = (text, disabled = false) => {
+            const btn = Utils.createEl('button', 'mte-menu-item', text);
+            btn.style.cssText = `
+                display: block; width: 100%; text-align: left; padding: 4px 8px;
+                background: transparent; border: none; color: ${disabled ? '#cbd5e1' : '#334155'};
+                font-size: 12px; font-weight: 500; cursor: ${disabled ? 'not-allowed' : 'pointer'};
+                border-radius: 4px; transition: all 0.15s; margin-bottom: 2px;
+            `;
+            if (!disabled) {
+                btn.onmouseover = () => { btn.style.background = '#f1f5f9'; btn.style.color = '#0f172a'; };
+                btn.onmouseout = () => { btn.style.background = 'transparent'; btn.style.color = '#334155'; };
+            }
+            return btn;
+        };
+
+        const actionCurl = createMenuItem('Copy cURL');
+        const actionPayload = createMenuItem('Copy Payload', !hasPayloadData);
+        const actionResponse = createMenuItem('Copy Response', !hasResponseData);
+
+        menuDropdown.appendChild(actionCurl);
+        menuDropdown.appendChild(actionPayload);
+        menuDropdown.appendChild(actionResponse);
+
+        const menuContainer = Utils.createEl('div', 'mte-menu-container');
+        menuContainer.style.cssText = 'position: relative;';
+        menuContainer.appendChild(menuBtn);
+        menuContainer.appendChild(menuDropdown);
+
+        // === Tabs Row with Menu on right ===
+        const tabsWrapper = Utils.createEl('div', 'mte-tabs-wrapper');
+        tabsWrapper.style.cssText = `
+            display: flex; justify-content: space-between; align-items: center;
+            border-bottom: 1px solid #e2e8f0; margin-bottom: 10px; padding-bottom: 8px;
+        `;
+
+        const tabsRow = Utils.createEl('div', 'mte-tabs');
+        tabsRow.style.cssText = 'display: inline-flex; background: #f1f5f9; padding: 3px; border-radius: 6px; gap: 2px;';
+
+        const tabContentContainer = Utils.createEl('div', 'mte-tab-contents');
+        tabContentContainer.style.cssText = 'padding-top: 4px;';
+
+        // Helper to update tab styles
+        const updateTabStyles = (btn, isActive) => {
+            btn.style.background = isActive ? '#6366f1' : 'transparent';
+            btn.style.color = isActive ? '#ffffff' : '#64748b';
+            btn.style.boxShadow = isActive ? '0 2px 4px rgba(99, 102, 241, 0.3)' : 'none';
+            btn.style.fontWeight = isActive ? '600' : '500';
+        };
+
+        // Create tab button
+        const createTabBtn = (name, isActive) => {
+            const btn = Utils.createEl('button', 'mte-tab-btn', name);
+            btn.style.cssText = `
+                border: none; border-radius: 4px; cursor: pointer;
+                font-size: 12px; padding: 4px 16px; transition: all 0.15s ease;
+            `;
+            updateTabStyles(btn, isActive);
+            return btn;
+        };
+
+        // Create content area (isResponse flag for different formatting)
+        const createTabContent = (contentData, isVisible, noDataText, urlParamsHtml = '', isResponse = false) => {
+            const content = Utils.createEl('div', 'mte-tab-content');
+            content.style.cssText = `
+                display: ${isVisible ? 'block' : 'none'}; 
+                font-size: 13px; font-family: Consolas, Monaco, monospace;
+                color: #334155; padding-top: 4px;
+            `;
+
+            const hasData = contentData && (typeof contentData === 'object' ? Object.keys(contentData).length > 0 : String(contentData).trim().length > 0);
+            const hasUrlParams = urlParamsHtml && urlParamsHtml.length > 0;
+
+            if (hasData || hasUrlParams) {
+                // Both tabs use key-value grid format
+                let html = '<div style="display: grid; grid-template-columns: auto 1fr; gap: 6px 16px;">';
+
+                // Add URL params first (for Payload tab)
+                if (hasUrlParams) {
+                    html += urlParamsHtml;
+                }
+
+                // Add body data
+                if (hasData) {
+                    try {
+                        const obj = typeof contentData === 'string' ? JSON.parse(contentData) : contentData;
+                        if (typeof obj === 'object' && obj !== null) {
+                            for (const [key, value] of Object.entries(obj)) {
+                                // Key column
+                                html += `<div style="color: #64748b; font-weight: 600; font-size: 13px;">${Utils.escapeHtml(key)}</div>`;
+
+                                // Value column - if object/array, show pretty JSON
+                                if (typeof value === 'object' && value !== null) {
+                                    const prettyVal = JSON.stringify(value, null, 2);
+                                    html += `<div style="color: #334155; white-space: pre-wrap; word-break: break-all; font-size: 13px; font-family: Consolas, monospace;">${Utils.escapeHtml(prettyVal)}</div>`;
+                                } else {
+                                    html += `<div style="color: #334155; white-space: pre-wrap; word-break: break-all; font-size: 13px;">${Utils.escapeHtml(String(value))}</div>`;
+                                }
+                            }
+                        } else {
+                            html += `<div style="grid-column: 1 / -1;"><pre style="margin:0; white-space: pre-wrap; font-size: 12px;">${Utils.escapeHtml(String(contentData))}</pre></div>`;
+                        }
+                    } catch (e) {
+                        html += `<div style="grid-column: 1 / -1;"><pre style="margin:0; white-space: pre-wrap; font-size: 12px;">${Utils.escapeHtml(String(contentData))}</pre></div>`;
+                    }
+                }
+
+                html += '</div>';
+                content.innerHTML = html;
+            } else {
+                content.innerHTML = `<span style="color: #94a3b8; font-style: italic;">${noDataText}</span>`;
+            }
+
+            return content;
+        };
+
+        // Parse URL params for Payload tab
+        let urlParamsHtml = '';
         try {
             const urlObj = new URL(data.url, window.location.origin);
             if (urlObj.searchParams.size > 0) {
-                hasPayload = true;
-                urlParamsObj = Object.fromEntries(urlObj.searchParams.entries());
+                urlObj.searchParams.forEach((value, key) => {
+                    urlParamsHtml += `<div style="color: #64748b; font-weight: 600; font-size: 13px;">${Utils.escapeHtml(key)}</div>`;
+                    urlParamsHtml += `<div style="color: #334155; white-space: pre-wrap; word-break: break-all; font-size: 13px;">${Utils.escapeHtml(value)}</div>`;
+                });
             }
         } catch (e) { }
-    }
 
-    let hasResponse = false;
-    if (data.response) {
-        if (typeof data.response === 'object') {
-            hasResponse = Object.keys(data.response).length > 0;
-        } else if (typeof data.response === 'string') {
-            hasResponse = data.response.trim().length > 0;
-        }
-    }
+        const payloadBtn = createTabBtn('Payload', true);
+        const responseBtn = createTabBtn('Response', false);
+        const payloadContent = createTabContent(data.payload, true, 'No payload', urlParamsHtml, false);
+        const responseContent = createTabContent(data.response, false, 'No response', '', true);
 
-    // Disable items if needed
-    if (!hasPayload) {
-        actionPayload.style.color = '#cbd5e1';
-        actionPayload.style.cursor = 'not-allowed';
-    }
-    if (!hasResponse) {
-        actionResponse.style.color = '#cbd5e1';
-        actionResponse.style.cursor = 'not-allowed';
-    }
-
-
-    // Remove last border logic not needed anymore
-
-
-    // Toggle Dropdown
-    menuBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const isHidden = menuDropdown.style.display === 'none';
-        // Close all other dropdowns
-        document.querySelectorAll('[id^="menu-dropdown-"]').forEach(el => el.style.display = 'none');
-        menuDropdown.style.display = isHidden ? 'flex' : 'none';
-    });
-
-    // Close on click outside
-    document.addEventListener('click', (e) => {
-        if (!menuBtn.contains(e.target) && !menuDropdown.contains(e.target)) {
-            menuDropdown.style.display = 'none';
-        }
-    });
-
-    // 1. Copy cURL
-    actionCurl.addEventListener('click', () => {
-        const cmd = generateCurlCommand({ ...data, url: fullUrl });
-        navigator.clipboard.writeText(cmd).then(() => showToast('cURL copied!'));
-        menuDropdown.style.display = 'none';
-    });
-
-    // 2. Copy Payload
-    actionPayload.addEventListener('click', () => {
-        if (!hasPayload) {
-            menuDropdown.style.display = 'none';
-            return;
-        }
-
-        // Prioritize actual body payload
-        if (data.payload && (typeof data.payload === 'object' ? Object.keys(data.payload).length > 0 : data.payload.length > 0)) {
-            copyJson(data.payload);
-        } else {
-            // Fallback to params
-            copyJson(urlParamsObj);
-        }
-        menuDropdown.style.display = 'none';
-    });
-
-    // 3. Copy Response
-    actionResponse.addEventListener('click', () => {
-        if (!hasResponse) {
-            menuDropdown.style.display = 'none';
-            return;
-        }
-        copyJson(data.response);
-        menuDropdown.style.display = 'none';
-    });
-
-    content.insertBefore(item, content.firstChild);
-
-    // Update count
-    updateRequestCount();
-}
-
-function copyJson(data) {
-    let text = "";
-    try {
-        if (typeof data === 'string') {
-            // Try parse first to pretty print
-            const obj = JSON.parse(data);
-            text = JSON.stringify(obj, null, 2);
-        } else {
-            text = JSON.stringify(data, null, 2);
-        }
-    } catch (e) {
-        text = String(data);
-    }
-    navigator.clipboard.writeText(text).then(() => showToast('JSON Copied!'));
-}
-
-function generateCurlCommand(data) {
-    let cmd = `curl -X ${data.method} "${data.url}"`;
-
-    if (data.headers) {
-        for (const [key, value] of Object.entries(data.headers)) {
-            // some headers are unsafe or context dependent, but we copy what we caught
-            cmd += ` -H "${key}: ${value}"`;
-        }
-    }
-
-    if (data.payload) {
-        let body = data.payload;
-        if (typeof body === 'object') {
-            try { body = JSON.stringify(body); } catch (e) { }
-        }
-        if (typeof body === 'string') {
-            body = body.replace(/'/g, "'\\''");
-            cmd += ` -d '${body}'`;
-        }
-    }
-    return cmd;
-}
-
-async function replayRequest(data) {
-    try {
-        const options = {
-            method: data.method,
-            headers: data.headers || {},
+        // Tab switching with proper styles
+        payloadBtn.onclick = () => {
+            updateTabStyles(payloadBtn, true);
+            updateTabStyles(responseBtn, false);
+            payloadContent.style.display = 'block';
+            responseContent.style.display = 'none';
         };
 
-        if (data.payload) {
-            if (typeof data.payload === 'object') {
-                options.body = JSON.stringify(data.payload);
-            } else {
-                options.body = data.payload;
-            }
-        }
+        responseBtn.onclick = () => {
+            updateTabStyles(responseBtn, true);
+            updateTabStyles(payloadBtn, false);
+            responseContent.style.display = 'block';
+            payloadContent.style.display = 'none';
+        };
 
-        // Clean headers?
-        // fetch will ignore some like 'Host', 'User-Agent' sometimes, but let's try sending as is.
-        // Important: Content-Type is often needed.
-
-        await fetch(data.url, options);
-        showToast('Request Replayed');
-    } catch (e) {
-        console.error(e);
-        showToast('Replay Failed: ' + e.message);
-    }
-}
-
-function createRowHtml(key, value) {
-    let displayValue = String(value);
-    let isCode = false;
-
-    // Fix: [object Object] display -> Pretty Print
-    if (typeof value === 'object' && value !== null) {
-        try {
-            displayValue = JSON.stringify(value, null, 2);
-            isCode = true;
-        } catch (e) {
-            displayValue = '[Unable to stringify]';
-        }
-    }
-
-    return `
-        <div style="color: #64748b; font-weight: 600; font-size: 13px;">${escapeHtml(key)}</div>
-        <div style="color: #334155; white-space: pre-wrap; word-break: break-all; font-family: Consolas, monospace; font-size: 13px;">${escapeHtml(displayValue)}</div>
-    `;
-}
-
-function escapeHtml(text) {
-    if (!text) return '';
-    return text
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#039;");
-}
-
-
-
-// --- Token Viewer Logic ---
-let tokenViewerActive = false;
-let tokenOverlay = null;
-
-function toggleTokenViewer(forceState = null) {
-    if (forceState !== null) {
-        tokenViewerActive = forceState;
-    } else {
-        tokenViewerActive = !tokenViewerActive;
-    }
-
-    if (tokenViewerActive) {
-        createTokenOverlay();
-        showToast('Token Viewer Active');
-    } else {
-        removeTokenOverlay();
-        showToast('Token Viewer Hidden');
-    }
-    updateToolState('tokenViewer', tokenViewerActive);
-}
-
-function scanTokens() {
-    const tokens = {};
-    const commonKeys = ['token', 'access_token', 'accessToken', 'auth', 'jwt', 'bearer', 'id_token', 'session', 'user', 'login', 'key', 'jsessionid', 'phpsessid', 'connect.sid', 'aspsessionid'];
-    const nestedKeys = ['accessToken', 'access_token', 'token', 'jwt', 'idToken', 'id_token'];
-
-    const processEntry = (source, key, value) => {
-        if (!value) return;
-
-        // 1. Check Key Name (Direct match)
-        if (commonKeys.some(k => key.toLowerCase().includes(k))) {
-            tokens[`${source}: ${key}`] = value;
-        }
-
-        // 2. Check JSON Content (Nested match)
-        if (typeof value === 'string' && (value.startsWith('{') || value.startsWith('['))) {
-            try {
-                // Try decoding first just in case (e.g. cookie values)
-                const decoded = decodeURIComponent(value);
-                const targetVal = (decoded.startsWith('{') || decoded.startsWith('[')) ? decoded : value;
-
-                const obj = JSON.parse(targetVal);
-                if (typeof obj === 'object' && obj !== null) {
-                    // Check for nested keys
-                    for (const nk of nestedKeys) {
-                        if (obj[nk] && (typeof obj[nk] === 'string' || typeof obj[nk] === 'number')) {
-                            // Found a nested token!
-                            tokens[`${source} [Extracted]: ${nk}`] = String(obj[nk]);
-                        }
-                    }
-
-                    // Handle specific cases like generic 'user' object having 'stsTokenManager' (Firebase)
-                    if (obj.stsTokenManager && obj.stsTokenManager.accessToken) {
-                        tokens[`${source} [Firebase]: accessToken`] = obj.stsTokenManager.accessToken;
-                    }
+        // Hover effects
+        [payloadBtn, responseBtn].forEach(btn => {
+            btn.onmouseover = () => {
+                if (!btn.classList.contains('active') && btn.style.background !== 'rgb(99, 102, 241)') {
+                    btn.style.color = '#334155';
+                    btn.style.background = 'rgba(255,255,255,0.5)';
                 }
-            } catch (e) {
-                // Not JSON, ignore
-            }
-        }
-    };
-
-    // 1. Scan LocalStorage
-    try {
-        for (let i = 0; i < localStorage.length; i++) {
-            const key = localStorage.key(i);
-            processEntry('Local', key, localStorage.getItem(key));
-        }
-    } catch (e) { }
-
-    // 2. Scan SessionStorage
-    try {
-        for (let i = 0; i < sessionStorage.length; i++) {
-            const key = sessionStorage.key(i);
-            processEntry('Session', key, sessionStorage.getItem(key));
-        }
-    } catch (e) { }
-
-    // 3. Scan Cookies
-    try {
-        if (document.cookie) {
-            // Add the full raw cookie string for Header usage
-            tokens['HEAD: Cookie'] = document.cookie;
-
-            // Check for accessToken inside the full cookie string specially
-            if (document.cookie.includes('accessToken=')) {
-                try {
-                    const match = document.cookie.match(/accessToken=([^;]+)/);
-                    if (match && match[0]) {
-                        tokens['EXTRACTED: accessToken'] = match[0]; // Shows "accessToken=..."
-                        // If they just want the value: match[1]
-                        // User said "Start from word accessToken=", so match[0] is appropriate.
-                    }
-                } catch (e) { }
-            }
-
-            const cookies = document.cookie.split(';');
-            cookies.forEach(cookie => {
-                if (!cookie.trim()) return;
-                const parts = cookie.split('=');
-                const name = parts[0].trim();
-                const value = parts.slice(1).join('=').trim();
-
-                // Decode cookie value for better readability
-                let decodedValue = value;
-                try { decodedValue = decodeURIComponent(value); } catch (e) { }
-
-                processEntry('Cookie', name, decodedValue);
-            });
-        }
-    } catch (e) { }
-
-    return tokens;
-}
-
-function createTokenOverlay() {
-    try {
-        removeTokenOverlay();
-
-        const overlay = document.createElement('div');
-        overlay.id = 'mte-token-viewer';
-        overlay.style.cssText = `
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            width: 450px;
-            max-height: 80vh;
-            background: #f1f5f9;
-            border: 1px solid #cbd5e1;
-            border-radius: 8px;
-            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
-            z-index: 2147483647; /* Max z-index */
-            display: flex;
-            flex-direction: column;
-            color: #0f172a;
-            font-family: 'Inter', system-ui, sans-serif;
-            font-size: 13px;
-        `;
-
-        const tokens = scanTokens();
-        const hasTokens = Object.keys(tokens).length > 0;
-
-        let contentHtml = '';
-        if (hasTokens) {
-            // Sort: EXTRACTED first, then HEAD, then others
-            const sortedKeys = Object.keys(tokens).sort((a, b) => {
-                const getPriority = (k) => {
-                    if (k.startsWith('EXTRACTED:')) return 0;
-                    if (k.startsWith('HEAD:')) return 1;
-                    return 2;
-                };
-                const pA = getPriority(a);
-                const pB = getPriority(b);
-                if (pA !== pB) return pA - pB;
-                return a.localeCompare(b);
-            });
-
-            for (const key of sortedKeys) {
-                const value = tokens[key];
-                const isExtracted = key.startsWith('EXTRACTED:');
-                const isHeader = key.startsWith('HEAD:');
-
-                let borderColor = '#e2e8f0';
-                let titleColor = '#475569';
-                let displayKey = key;
-
-                if (isExtracted) {
-                    borderColor = '#10b981'; // Green for specific match
-                    titleColor = '#059669';
-                    displayKey = '🎯 ' + key.replace('EXTRACTED: ', '');
-                } else if (isHeader) {
-                    borderColor = '#6366f1'; // Blue
-                    titleColor = '#4f46e5';
-                    displayKey = 'Raw Cookie Header';
+            };
+            btn.onmouseout = () => {
+                if (btn.style.background !== 'rgb(99, 102, 241)') {
+                    const isActive = btn === payloadBtn ? payloadContent.style.display === 'block' : responseContent.style.display === 'block';
+                    updateTabStyles(btn, isActive);
                 }
-
-                contentHtml += `
-                <div style="background: white; padding: 12px; border-radius: 6px; border: 1px solid ${borderColor}; margin-bottom: 8px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                        <span style="font-weight: 700; font-size: 12px; color: ${titleColor};">${escapeHtml(displayKey)}</span>
-                        <button class="mte-copy-btn" data-value="${escapeHtml(value)}" style="
-                            background: #e2e8f0; border: none; padding: 4px 8px; border-radius: 4px; 
-                            font-size: 11px; cursor: pointer; color: #334155; font-weight: 600;">Copy</button>
-                    </div>
-                    <div style="
-                        font-family: monospace; font-size: 11px; color: #64748b; 
-                        word-break: break-all; max-height: ${isHeader ? '80px' : '60px'}; overflow-y: auto;
-                        background: #f8fafc; padding: 6px; border-radius: 4px;">
-                        ${escapeHtml(value)}
-                    </div>
-                </div>`;
-            }
-        } else {
-            contentHtml = `<div style="text-align: center; color: #64748b; padding: 20px;">No typical token keys or cookies found.</div>`;
-        }
-
-        overlay.innerHTML = `
-            <div style="
-                padding: 12px; 
-                border-bottom: 1px solid #e2e8f0; 
-                background: white; 
-                border-top-left-radius: 8px; 
-                border-top-right-radius: 8px; 
-                display: flex; 
-                justify-content: space-between; 
-                align-items: center;
-                cursor: default;
-            ">
-                <span style="font-weight: 700; font-size: 14px;">Token Viewer</span>
-                <button id="mte-token-close" style="background: transparent; border: none; font-size: 18px; cursor: pointer; color: #64748b;">✕</button>
-            </div>
-            <div style="padding: 12px; overflow-y: auto; flex: 1;">
-                ${contentHtml}
-            </div>
-        `;
-
-        document.body.appendChild(overlay);
-        tokenOverlay = overlay;
-
-        // Add Listeners
-        const closeBtn = overlay.querySelector('#mte-token-close');
-        if (closeBtn) {
-            closeBtn.addEventListener('click', () => {
-                toggleTokenViewer(false);
-            });
-        }
-
-        overlay.querySelectorAll('.mte-copy-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                const val = e.target.getAttribute('data-value');
-                navigator.clipboard.writeText(val).then(() => {
-                    const originalText = e.target.textContent;
-                    e.target.textContent = 'Copied!';
-                    e.target.style.background = '#10b981';
-                    e.target.style.color = 'white';
-                    setTimeout(() => {
-                        e.target.textContent = originalText;
-                        e.target.style.background = '#e2e8f0';
-                        e.target.style.color = '#334155';
-                    }, 1500);
-                });
-            });
+            };
         });
-    } catch (err) {
-        console.error('Error creating token overlay:', err);
-        showToast('Error showing tokens');
+
+        tabsRow.appendChild(payloadBtn);
+        tabsRow.appendChild(responseBtn);
+        tabsWrapper.appendChild(tabsRow);
+        tabsWrapper.appendChild(menuContainer); // Menu on right of tabs row
+        tabContentContainer.appendChild(payloadContent);
+        tabContentContainer.appendChild(responseContent);
+
+        item.appendChild(tabsWrapper);
+        item.appendChild(tabContentContainer);
+
+        // === Event Listeners ===
+        menuBtn.onclick = (e) => {
+            e.stopPropagation();
+            document.querySelectorAll('[id^="menu-dropdown-"]').forEach(el => el.style.display = 'none');
+            menuDropdown.style.display = menuDropdown.style.display === 'none' ? 'flex' : 'none';
+        };
+
+        document.addEventListener('click', (e) => {
+            if (!menuBtn.contains(e.target) && !menuDropdown.contains(e.target)) {
+                menuDropdown.style.display = 'none';
+            }
+        });
+
+        actionCurl.onclick = () => {
+            const cmd = this.generateCurl(data, fullUrl);
+            navigator.clipboard.writeText(cmd);
+            this.manager.showToast('cURL copied!');
+            menuDropdown.style.display = 'none';
+        };
+
+        actionPayload.onclick = () => {
+            if (!hasPayloadData) {
+                menuDropdown.style.display = 'none';
+                return;
+            }
+            // Prioritize body payload, fallback to URL params
+            if (hasBodyPayload) {
+                this.copyJson(data.payload);
+            } else {
+                this.copyJson(urlParamsObj);
+            }
+            menuDropdown.style.display = 'none';
+        };
+
+        actionResponse.onclick = () => {
+            if (!data.response) return;
+            this.copyJson(data.response);
+            menuDropdown.style.display = 'none';
+        };
+
+        // Prepend to top
+        if (content.firstChild) {
+            content.insertBefore(item, content.firstChild);
+        } else {
+            content.appendChild(item);
+        }
+
+        const countEl = document.getElementById('mte-req-count');
+        if (countEl) countEl.textContent = parseInt(countEl.textContent) + 1;
+    }
+
+    copyJson(data) {
+        let text = '';
+        try {
+            if (typeof data === 'string') {
+                const obj = JSON.parse(data);
+                text = JSON.stringify(obj, null, 2);
+            } else {
+                text = JSON.stringify(data, null, 2);
+            }
+        } catch (e) {
+            text = String(data);
+        }
+        navigator.clipboard.writeText(text);
+        this.manager.showToast('Copied!');
+    }
+
+    generateCurl(data, fullUrl) {
+        let cmd = `curl -X ${data.method} "${fullUrl}"`;
+
+        if (data.headers) {
+            for (const [key, value] of Object.entries(data.headers)) {
+                cmd += ` -H "${key}: ${value}"`;
+            }
+        }
+
+        if (data.payload) {
+            let body = data.payload;
+            if (typeof body === 'object') {
+                try { body = JSON.stringify(body); } catch (e) { }
+            }
+            if (typeof body === 'string') {
+                body = body.replace(/'/g, "'\\''");
+                cmd += ` -d '${body}'`;
+            }
+        }
+        return cmd;
     }
 }
 
-function removeTokenOverlay() {
-    const el = document.getElementById('mte-token-viewer');
-    if (el) el.remove();
-    tokenOverlay = null;
+/**
+ * Font Scanner Tool
+ */
+const FontScanner = {
+    scan() {
+        const fontSizes = new Set();
+        // Optimization: Use TreeWalker to filter text nodes only
+        const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null, false);
+        let node;
+        while (node = walker.nextNode()) {
+            const parent = node.parentElement;
+            if (parent) {
+                const style = window.getComputedStyle(parent);
+                if (style.fontSize) fontSizes.add(style.fontSize);
+            }
+        }
+        return Array.from(fontSizes).sort((a, b) => parseFloat(a) - parseFloat(b));
+    },
+
+    highlight(size) {
+        document.querySelectorAll('.mte-highlight').forEach(el => el.classList.remove('mte-highlight'));
+        if (!size) return;
+
+        // Can't use TreeWalker easily for generic element highlighting by style, 
+        // but querySelectorAll('*') is okay for highlighting if we filter fast.
+        const all = document.querySelectorAll('*');
+        for (const el of all) {
+            // Basic visibility check could be added
+            if (el.children.length === 0 && el.innerText) { // Leaf nodes mainly
+                const s = window.getComputedStyle(el);
+                if (s.fontSize === size) el.classList.add('mte-highlight');
+            }
+        }
+    }
+};
+
+/**
+ * Extension Manager
+ */
+class ExtensionManager {
+    constructor() {
+        this.inspector = new InspectorTool(this);
+        this.colorPicker = new ColorPickerTool(this);
+        this.apiMonitor = new ApiMonitorTool(this);
+        this.liveEditor = new LiveEditorTool(this);
+        this.floatingControl = null;
+
+        this.init();
+    }
+
+    init() {
+        // Listeners
+        chrome.runtime.onMessage.addListener(this.handleRuntimeMessage.bind(this));
+
+        // Storage Listener
+        chrome.storage.onChanged.addListener((changes, area) => {
+            if (area === 'local' && changes.activeTool) {
+                const newVal = changes.activeTool.newValue;
+                // Deactivate others?
+                const tools = ['inspector', 'colorPicker', 'fontScanner', 'apiMonitor'];
+                // Not necessarily, but let's follow logic
+
+                if (newVal === 'apiMonitor') this.apiMonitor.toggle(true);
+                else if (!newVal && this.apiMonitor.active) this.apiMonitor.toggle(false);
+            }
+        });
+
+        // Initialize State
+        this.restoreState();
+    }
+
+    restoreState() {
+        chrome.storage.local.get(['persistentMode', 'activeTool', 'activeToolArgs'], (res) => {
+            if (res.persistentMode && res.activeTool) {
+                if (res.activeTool === 'apiMonitor') this.apiMonitor.toggle(true);
+                if (res.activeTool === 'inspector') this.inspector.toggle(true);
+                if (res.activeTool === 'colorPicker') this.colorPicker.toggle(true);
+                if (res.activeTool === 'fontScanner' && res.activeToolArgs) {
+                    FontScanner.highlight(res.activeToolArgs.fontSize);
+                }
+            }
+        });
+    }
+
+    handleRuntimeMessage(req, sender, sendResp) {
+        if (req.action === 'scanFonts') {
+            const fonts = FontScanner.scan();
+            chrome.runtime.sendMessage({ action: 'fontScanResults', data: fonts });
+        } else if (req.action === 'toggleInspector') {
+            this.inspector.toggle(req.force || null);
+        } else if (req.action === 'toggleColorPicker') {
+            this.colorPicker.toggle(req.force || null);
+        } else if (req.action === 'highlightFont') {
+            FontScanner.highlight(req.fontSize);
+        } else if (req.action === 'toggleApiMonitor') {
+            this.apiMonitor.toggle(req.force || null);
+        } else if (req.action === 'receiveApiData') {
+            if (window.top === window.self && this.apiMonitor.active) {
+                this.apiMonitor.addRequest(req.data);
+            }
+        } else if (req.action === 'toggleLiveEditor') {
+            this.liveEditor.toggle(req.mode);
+        }
+    }
+
+    updateToolState(tool, active, args = null) {
+        chrome.runtime.sendMessage({ action: 'toolStateUpdated', tool, active, args });
+    }
+
+    showToast(msg) {
+        const toast = Utils.createEl('div', 'mte-toast', msg);
+        document.body.appendChild(toast);
+        setTimeout(() => toast.remove(), 2000);
+    }
+
+    showFloatingControl(text, onStop) {
+        this.removeFloatingControl();
+        const el = Utils.createEl('div', 'mte-floating-control');
+
+        const span = Utils.createEl('span', '', text);
+        const btn = Utils.createEl('button', '', 'Stop');
+        btn.onclick = (e) => {
+            e.stopPropagation();
+            onStop();
+        };
+
+        el.appendChild(span);
+        el.appendChild(btn);
+        document.body.appendChild(el);
+        this.floatingControl = el;
+    }
+
+    removeFloatingControl() {
+        if (this.floatingControl) {
+            this.floatingControl.remove();
+            this.floatingControl = null;
+        }
+    }
 }
 
-function showFloatingControl(text, callback) {
-    removeFloatingControl();
-
-    const control = document.createElement('div');
-    control.id = 'mte-floating-control';
-    control.style.cssText = `
-        position: fixed;
-        bottom: 20px;
-        left: 50%;
-        transform: translateX(-50%);
-        background: #0f172a;
-        color: white;
-        padding: 8px 16px;
-        border-radius: 9999px;
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.3);
-        z-index: 9999999;
-        font-family: system-ui, sans-serif;
-        font-size: 14px;
-        border: 1px solid #334155;
-    `;
-
-    control.innerHTML = `
-        <span style="font-weight:500;">${text}</span>
-        <button id="mte-stop-btn" style="
-            background: #ef4444;
-            color: white;
-            border: none;
-            padding: 4px 12px;
-            border-radius: 99px;
-            cursor: pointer;
-            font-size: 12px;
-            font-weight: bold;
-        ">Stop</button>
-    `;
-
-    document.body.appendChild(control);
-
-    document.getElementById('mte-stop-btn').addEventListener('click', () => {
-        callback(); // Call the toggle function to turn it off
-    });
-}
-
-function removeFloatingControl() {
-    const el = document.getElementById('mte-floating-control');
-    if (el) el.remove();
-}
+// Instantiate
+new ExtensionManager();

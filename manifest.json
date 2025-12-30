@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Tool for Tester",
-  "version": "1.0",
-  "description": "A comprehensive toolkit for testers and developers with responsive viewer, font scanner, and more.",
+  "name": "Tools for Tester",
+  "version": "2.0",
+  "description": "A comprehensive toolkit for testers and developers with Preaw & Champ",
   "permissions": [
     "activeTab",
     "scripting",

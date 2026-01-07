@@ -13,7 +13,7 @@ class ApiMonitorTool {
         this.handleMessage = this.handleMessage.bind(this);
     }
 
-    toggle(forceState = null) {
+    toggle(forceState = null, silent = false) {
         this.active = forceState !== null ? forceState : !this.active;
 
         if (this.active) {
@@ -36,7 +36,7 @@ class ApiMonitorTool {
             }
         }
 
-        if (window.top === window.self) {
+        if (window.top === window.self && !silent) {
             this.manager.updateToolState('apiMonitor', this.active);
         }
     }
@@ -84,10 +84,32 @@ class ApiMonitorTool {
 
         const left = Utils.createEl('div', 'mte-api-controls');
         const title = Utils.createEl('span', 'mte-api-title', 'API Monitor');
+
+        // Count Container
+        const countContainer = Utils.createEl('span', 'mte-count-container');
+        countContainer.style.cssText = 'display: inline-flex; gap: 8px; margin-left: 8px; font-size: 12px;';
+
         const count = Utils.createEl('span', '', '0');
         count.id = 'mte-req-count';
+        count.title = 'Total Requests';
+
+        const errCount = Utils.createEl('span', '', '0');
+        errCount.id = 'mte-err-count';
+        // Circle styling matching #mte-req-count but RED
+        errCount.style.cssText = `
+            background: #fee2e2; 
+            color: #dc2626; 
+            font-size: 11px; font-weight: 700; 
+            padding: 2px 8px; border-radius: 99px; 
+            display: none; box-shadow: 0 1px 2px rgba(220, 38, 38, 0.1);
+        `;
+        errCount.title = '500+ Errors';
+
+        countContainer.appendChild(count);
+        countContainer.appendChild(errCount);
+
         left.appendChild(title);
-        left.appendChild(count);
+        left.appendChild(countContainer);
 
         const right = Utils.createEl('div', 'mte-api-controls');
         const clearBtn = Utils.createEl('button', '', 'Clear');
@@ -96,7 +118,12 @@ class ApiMonitorTool {
 
         const closeBtn = Utils.createEl('button', '', '✕');
         closeBtn.id = 'mte-api-close';
-        closeBtn.onclick = () => this.toggle(false);
+        // Global Close: Send request to background to close all
+        closeBtn.onclick = () => {
+            chrome.runtime.sendMessage({ action: 'requestCloseAll' });
+            // Local close happens via broadcast back, but we can do it immediately too for responsiveness
+            this.toggle(false);
+        };
 
         right.appendChild(clearBtn);
         right.appendChild(closeBtn);
@@ -134,6 +161,11 @@ class ApiMonitorTool {
         this.displayedTimestamps.clear();
         const countEl = document.getElementById('mte-req-count');
         if (countEl) countEl.textContent = '0';
+        const errEl = document.getElementById('mte-err-count');
+        if (errEl) {
+            errEl.textContent = '0';
+            errEl.style.display = 'none';
+        }
     }
 
     initDrag(handle, target) {
@@ -191,28 +223,44 @@ class ApiMonitorTool {
             fullUrl = new URL(data.url, window.location.origin).href;
         } catch (e) { }
 
-        // === Top Row (Time on left, Duration on right) ===
-        const topRow = Utils.createEl('div', 'mte-top-row');
-        topRow.style.cssText = 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;';
+        // === Header Row (Method, Status, URL) ===
+        // [Method] [Status] [URL........] [Time] [Duration]
 
-        // Time on left
-        const timeStr = new Date(data.timestamp || Date.now()).toLocaleTimeString('en-US', { hour12: false });
-        const dupKey = `${timeStr}|${data.method}|${data.url}`;
-        let dupCount = (this.displayedTimestamps.get(dupKey) || 0) + 1;
-        this.displayedTimestamps.set(dupKey, dupCount);
+        const header = Utils.createEl('div', 'mte-api-item-header');
+        header.style.cssText = 'display: flex; align-items: center; gap: 8px; margin-bottom: 6px;';
 
-        // Time badge (Header style)
-        const isDup = dupCount > 1;
-        const timeSpan = Utils.createEl('span', 'mte-time', timeStr);
-        timeSpan.style.cssText = `
-            font-size: 11px; font-weight: 700; letter-spacing: 0.5px;
-            color: ${isDup ? '#dc2626' : '#475569'}; 
-            background: ${isDup ? '#fee2e2' : '#e2e8f0'}; 
-            padding: 2px 8px; border-radius: 4px;
-        `;
-        topRow.appendChild(timeSpan);
+        // 1. Method
+        const methodClasses = `mte-method-badge mte-method-${data.method}`;
+        const methodSpan = Utils.createEl('span', methodClasses, data.method);
 
-        // Duration on right with color coding
+        // 2. Status
+        let statusClass = 'mte-status-DEFAULT';
+        const s = data.status;
+        if (s >= 200 && s < 300) statusClass = 'mte-status-2xx';
+        else if (s >= 300 && s < 400) statusClass = 'mte-status-3xx';
+        else if (s >= 400) statusClass = 'mte-status-4xx';
+
+        const statusSpan = Utils.createEl('span', `mte-status-badge ${statusClass}`, s);
+
+        // Highlight 500 errors with red border
+        if (s >= 500) {
+            item.style.border = '1px solid #ef4444'; // Red-500
+            item.style.boxShadow = '0 1px 2px rgba(239, 68, 68, 0.1)';
+        }
+
+        // 3. URL
+        let pathname = data.url;
+        try {
+            const urlObj = new URL(data.url, window.location.origin);
+            pathname = urlObj.pathname;
+        } catch (e) { }
+
+        const urlSpan = Utils.createEl('span', 'mte-api-url', pathname);
+        urlSpan.title = fullUrl;
+        urlSpan.style.cssText = 'flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #334155; font-size: 13px; font-weight: 500;';
+
+        // 5. Duration (Stays in Header)
+        let durationSpan = null;
         if (data.duration) {
             const dur = parseInt(data.duration);
             let durColor, durBg, durBorder;
@@ -226,49 +274,26 @@ class ApiMonitorTool {
                 // Slow - Red
                 durColor = '#b91c1c'; durBg = '#fee2e2'; durBorder = '#fca5a5';
             }
-            const durationSpan = Utils.createEl('span', 'mte-duration', `${data.duration}ms`);
+
+            durationSpan = Utils.createEl('span', 'mte-duration', `${data.duration}ms`);
             durationSpan.style.cssText = `
                 font-size: 11px; font-weight: 600; 
                 color: ${durColor}; background: ${durBg}; 
                 border: 1px solid ${durBorder};
-                padding: 2px 8px; border-radius: 4px;
+                padding: 1px 6px; border-radius: 4px;
+                min-width: 50px; text-align: right; margin-left: auto;
             `;
-            topRow.appendChild(durationSpan);
         }
 
-        item.appendChild(topRow);
-
-        // === Header Row (Method, Status, URL) ===
-        const header = Utils.createEl('div', 'mte-api-item-header');
-        header.style.cssText = 'display: flex; align-items: center; gap: 8px; margin-bottom: 10px;';
-
-        const methodClasses = `mte-method-badge mte-method-${data.method}`;
-        const methodSpan = Utils.createEl('span', methodClasses, data.method);
-
-        let statusClass = 'mte-status-DEFAULT';
-        const s = data.status;
-        if (s >= 200 && s < 300) statusClass = 'mte-status-2xx';
-        else if (s >= 300 && s < 400) statusClass = 'mte-status-3xx';
-        else if (s >= 400) statusClass = 'mte-status-4xx';
-
-        const statusSpan = Utils.createEl('span', `mte-status-badge ${statusClass}`, s);
-
-        let pathname = data.url;
-        try {
-            const urlObj = new URL(data.url, window.location.origin);
-            pathname = urlObj.pathname;
-        } catch (e) { }
-
-        const urlSpan = Utils.createEl('span', 'mte-api-url', pathname);
-        urlSpan.title = fullUrl;
-        urlSpan.style.cssText = 'flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #334155; font-size: 13px;';
-
+        // Assemble Header: Method -> Status -> URL -> Duration
         header.appendChild(methodSpan);
         header.appendChild(statusSpan);
         header.appendChild(urlSpan);
+        if (durationSpan) header.appendChild(durationSpan);
+
         item.appendChild(header);
 
-        // === Menu Button (will be added to tabs row) ===
+        // === Menu Button & Tabs & Time ===
         const menuBtn = Utils.createEl('button', 'mte-menu-btn', '⋮');
         menuBtn.id = `menu-btn-${itemId}`;
         menuBtn.style.cssText = `
@@ -334,15 +359,39 @@ class ApiMonitorTool {
         menuContainer.appendChild(menuBtn);
         menuContainer.appendChild(menuDropdown);
 
+        // Re-implement Time Logic Here for Tabs Row
+        const timeStr = new Date(data.timestamp || Date.now()).toLocaleTimeString('en-US', { hour12: false });
+        const dupKey = `${timeStr}|${data.method}|${data.url}`;
+        let dupCount = (this.displayedTimestamps.get(dupKey) || 0) + 1;
+        this.displayedTimestamps.set(dupKey, dupCount);
+        const isDup = dupCount > 1;
+
+        const timeSpan = Utils.createEl('span', 'mte-time', timeStr);
+        timeSpan.style.cssText = `
+            font-size: 11px; font-weight: 700; letter-spacing: 0.5px;
+            color: ${isDup ? '#dc2626' : '#475569'}; 
+            background: ${isDup ? '#fee2e2' : '#e2e8f0'}; 
+            padding: 2px 8px; border-radius: 4px;
+            margin-right: 8px; /* Spacing before Menu Btn */
+        `;
+
         // === Tabs Row with Menu on right ===
         const tabsWrapper = Utils.createEl('div', 'mte-tabs-wrapper');
+        // Reduce margin bottom since header is single line now
         tabsWrapper.style.cssText = `
             display: flex; justify-content: space-between; align-items: center;
-            border-bottom: 1px solid #e2e8f0; margin-bottom: 10px; padding-bottom: 8px;
+            border-bottom: 1px solid #e2e8f0; margin-bottom: 8px; padding-bottom: 6px;
         `;
 
         const tabsRow = Utils.createEl('div', 'mte-tabs');
         tabsRow.style.cssText = 'display: inline-flex; background: #f1f5f9; padding: 3px; border-radius: 6px; gap: 2px;';
+
+        // Right Controls Container (Time + Menu)
+        const rightControls = Utils.createEl('div', 'mte-right-controls');
+        rightControls.style.cssText = 'display: flex; align-items: center;';
+
+        rightControls.appendChild(timeSpan);     // [Time]
+        rightControls.appendChild(menuContainer); // [Menu]
 
         const tabContentContainer = Utils.createEl('div', 'mte-tab-contents');
         tabContentContainer.style.cssText = 'padding-top: 4px;';
@@ -472,7 +521,7 @@ class ApiMonitorTool {
         tabsRow.appendChild(payloadBtn);
         tabsRow.appendChild(responseBtn);
         tabsWrapper.appendChild(tabsRow);
-        tabsWrapper.appendChild(menuContainer); // Menu on right of tabs row
+        tabsWrapper.appendChild(rightControls); // Changed from menuContainer to rightControls
         tabContentContainer.appendChild(payloadContent);
         tabContentContainer.appendChild(responseContent);
 
@@ -528,6 +577,15 @@ class ApiMonitorTool {
 
         const countEl = document.getElementById('mte-req-count');
         if (countEl) countEl.textContent = parseInt(countEl.textContent) + 1;
+
+        if (s >= 500) {
+            const errEl = document.getElementById('mte-err-count');
+            if (errEl) {
+                const newCount = parseInt(errEl.textContent) + 1;
+                errEl.textContent = newCount;
+                errEl.style.display = 'inline';
+            }
+        }
     }
 
     copyJson(data) {

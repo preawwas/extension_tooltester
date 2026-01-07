@@ -1,7 +1,33 @@
+// State Management
+let tabStates = {}; // { [tabId]: 'apiMonitor' }
+
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     // Handle Tool State Updates from Content Script
     if (request.action === 'toolStateUpdated') {
+        const tabId = sender.tab ? sender.tab.id : null;
+        if (tabId && request.tool === 'apiMonitor') {
+            if (request.active) {
+                tabStates[tabId] = 'apiMonitor';
+            } else {
+                delete tabStates[tabId];
+            }
+        }
+        // Keep global logic for other tools if needed
         chrome.storage.local.set({ activeTool: request.active ? request.tool : null, activeToolArgs: request.args || null });
+    }
+
+    if (request.action === 'requestCloseAll') {
+        // Global Kill Switch
+        tabStates = {}; // Clear all states
+        // Broadcast to all tabs in all windows
+        chrome.tabs.query({}, (tabs) => {
+            tabs.forEach(tab => {
+                chrome.tabs.sendMessage(tab.id, {
+                    action: 'toggleApiMonitor',
+                    force: false
+                }).catch(() => { });
+            });
+        });
     }
 
     if (request.action === 'clearCache') {
@@ -11,17 +37,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             "cookies": opts.cookies !== false,
             "localStorage": opts.localStorage !== false,
             "history": opts.history === true, // default false
-            // Always clear these if cache/cookies are cleared? Or logic?
-            // For now let's strict to what user asked + reasonable defaults for "cleaning"
             "appcache": opts.cache !== false,
             "cacheStorage": opts.cache !== false,
             "indexedDB": opts.localStorage !== false,
             "webSQL": opts.localStorage !== false,
             "serviceWorkers": opts.cache !== false
         };
-
-        // Filter keys where value is false (API might not like false?, actually it wants true to remove)
-        // browsingData.remove expects object with properties set to true to remove them.
 
         chrome.browsingData.remove({
             "since": 0
@@ -45,45 +66,40 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 });
 
 // Persistence Handler
-// Persistence Handler
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-    // Trigger on complete load OR on URL change (SPA navigation)
-    const isNavigation = changeInfo.status === 'complete' || changeInfo.url;
+    // Trigger on 'loading' (for early injection) OR 'complete' (for robustness) OR URL change
+    const isNavigation = changeInfo.status === 'loading' || changeInfo.status === 'complete' || changeInfo.url;
 
     if (isNavigation && tab.url && !tab.url.startsWith('chrome://')) {
         chrome.storage.local.get(['persistentMode', 'activeTool', 'activeToolArgs'], (result) => {
-            if (result.persistentMode && result.activeTool === 'apiMonitor') {
-                // Re-activate the tool
+
+            // API Monitor Persistence Logic (Per Tab)
+            if (result.persistentMode && tabStates[tabId] === 'apiMonitor') {
+                // Re-activate specific tab
+                const sendMessage = () => {
+                    chrome.tabs.sendMessage(tabId, {
+                        action: 'toggleApiMonitor',
+                        force: true,
+                        silent: true
+                    }).catch(() => { });
+                };
+                sendMessage();
+                setTimeout(sendMessage, 1000);
+            }
+
+            // Other Tools Logic (Legacy Global)
+            if (result.persistentMode && result.activeTool && result.activeTool !== 'apiMonitor') {
                 let action = '';
                 if (result.activeTool === 'inspector') action = 'toggleInspector';
                 else if (result.activeTool === 'colorPicker') action = 'toggleColorPicker';
                 else if (result.activeTool === 'fontScanner') action = 'highlightFont';
-                else if (result.activeTool === 'apiMonitor') action = 'toggleApiMonitor';
 
                 if (action) {
                     const payload = { action: action, force: true };
-                    // If simply toggling, we might prefer "enable" action to avoid flipping off if already on.
-                    // However, we assume navigation resets state.
-                    // For SPA (url change but no reload), content script state MIGHT persist.
-                    // So we should ideally send an "ensureActive" or check state first.
-                    // But 'toggle' is what we have.
-                    // Fix: Add 'force: true' or similar if we can modify content.js, or just send it.
-                    // For now, let's assume reload resets it. For SPA, it might be tricky.
-                    // Let's send a generic "reapply" message if it's SPA?
-                    // Simpler: Just send the action. 
-
                     if (result.activeTool === 'fontScanner' && result.activeToolArgs) {
                         payload.fontSize = result.activeToolArgs.fontSize;
                     }
-
-                    // Retry logic for 'complete' status which ensures content script is ready
-                    const sendMessage = () => {
-                        chrome.tabs.sendMessage(tabId, payload).catch(() => { });
-                    };
-
-                    sendMessage();
-                    // Retry once after a second just in case
-                    setTimeout(sendMessage, 1000);
+                    chrome.tabs.sendMessage(tabId, payload).catch(() => { });
                 }
             }
         });

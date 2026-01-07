@@ -19,13 +19,18 @@ class ExtensionManager {
         // Storage Listener
         chrome.storage.onChanged.addListener((changes, area) => {
             if (area === 'local' && changes.activeTool) {
+                // Global activeTool is deprecated for API Monitor in favor of per-tab state.
+                // We keep it for other tools if they still rely on it, OR we simply ignore it for API Monitor.
+                // For now, let's strictly ignore API Monitor updates here to prevent auto-opening.
                 const newVal = changes.activeTool.newValue;
-                // Deactivate others?
-                const tools = ['inspector', 'colorPicker', 'fontScanner', 'apiMonitor'];
-                // Not necessarily, but let's follow logic
-
-                if (newVal === 'apiMonitor') this.apiMonitor.toggle(true);
-                else if (!newVal && this.apiMonitor.active) this.apiMonitor.toggle(false);
+                if (newVal !== 'apiMonitor' && newVal) {
+                    // Handle other tools if needed
+                } else if (!newVal && this.apiMonitor.active) {
+                    // If global tool is cleared, maybe we should close?
+                    // No, per-tab isolation means global state doesn't dictate specific tab state unless explicitly requested.
+                    // However, "Close All" might set activeTool to null?
+                    // Let's rely on 'requestCloseAll' message instead.
+                }
             }
         });
 
@@ -36,7 +41,9 @@ class ExtensionManager {
     restoreState() {
         chrome.storage.local.get(['persistentMode', 'activeTool', 'activeToolArgs'], (res) => {
             if (res.persistentMode && res.activeTool) {
-                if (res.activeTool === 'apiMonitor') this.apiMonitor.toggle(true);
+                // API Monitor state is now handled by background script 'onUpdated' -> sending specific message
+                // So we do NOT auto-enable here for API Monitor.
+
                 if (res.activeTool === 'inspector') this.inspector.toggle(true);
                 if (res.activeTool === 'colorPicker') this.colorPicker.toggle(true);
                 if (res.activeTool === 'fontScanner' && res.activeToolArgs) {
@@ -57,7 +64,8 @@ class ExtensionManager {
         } else if (req.action === 'highlightFont') {
             FontScanner.highlight(req.fontSize);
         } else if (req.action === 'toggleApiMonitor') {
-            this.apiMonitor.toggle(req.force || null);
+            const forceState = (typeof req.force === 'boolean') ? req.force : null;
+            this.apiMonitor.toggle(forceState, req.silent || false);
         } else if (req.action === 'receiveApiData') {
             if (window.top === window.self && this.apiMonitor.active) {
                 this.apiMonitor.addRequest(req.data);

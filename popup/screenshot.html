@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Full Page Screenshot</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f1f5f9;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            max-width: 90%;
+            text-align: center;
+        }
+
+        h1 {
+            color: #1e293b;
+            margin-bottom: 20px;
+            font-size: 24px;
+        }
+
+        #preview-container {
+            border: 1px solid #cbd5e1;
+            margin: 20px 0;
+            overflow: auto;
+            max-height: 80vh;
+            text-align: center;
+        }
+
+        canvas {
+            max-width: 100%;
+            height: auto;
+            display: block;
+            margin: 0 auto;
+        }
+
+        .actions {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-top: 20px;
+        }
+
+        button {
+            background-color: #6366f1;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        button:hover {
+            background-color: #4f46e5;
+        }
+
+        button.secondary {
+            background-color: #94a3b8;
+        }
+
+        button.secondary:hover {
+            background-color: #64748b;
+        }
+
+        .loading {
+            font-size: 16px;
+            color: #64748b;
+            margin: 40px 0;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>Full Page Screenshot</h1>
+        <div id="loading" class="loading">Processing image...</div>
+        <div id="preview-container" style="display: none;">
+            <canvas id="canvas"></canvas>
+        </div>
+        <div class="actions" id="actions" style="display: none;">
+            <button id="btn-download">Download Image</button>
+            <button id="btn-delete" class="secondary">Discard</button>
+        </div>
+    </div>
+    <script src="screenshot.js"></script>
+</body>
+
+</html>

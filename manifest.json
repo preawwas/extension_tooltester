@@ -4,10 +4,11 @@
   "version": "2.1",
   "description": "A comprehensive toolkit for testers and developers with Preaw & Champ",
   "permissions": [
-    "activeTab",
     "scripting",
     "storage",
-    "browsingData"
+    "browsingData",
+    "unlimitedStorage",
+    "debugger"
   ],
   "host_permissions": [
     "<all_urls>"

@@ -1,4 +1,14 @@
 document.addEventListener('DOMContentLoaded', () => {
+    const btnFullPage = document.getElementById('btn-full-page');
+
+    if (btnFullPage) {
+        btnFullPage.addEventListener('click', () => {
+            // Send message to background to start the process
+            chrome.runtime.sendMessage({ action: 'startCapture' });
+            window.close(); // Close popup
+        });
+    }
+
     // Persistence Logic
     const persistChk = document.getElementById('chk-persistence');
     chrome.storage.local.get(['persistentMode'], (result) => {

@@ -1,5 +1,5 @@
 /**
- * Live Editor Tool - 6 Modes
+ * Live Editor Tool - 6 Modes with Floating Toolbar
  */
 class LiveEditorTool {
     constructor(manager) {
@@ -8,51 +8,64 @@ class LiveEditorTool {
         this.active = false;
         this.styleElement = null;
         this.cssPanel = null;
+        this.toolbar = null;
 
         this.handleClick = this.handleClick.bind(this);
         this.handleHover = this.handleHover.bind(this);
         this.handleDragStart = this.handleDragStart.bind(this);
         this.handleDrag = this.handleDrag.bind(this);
         this.handleDragEnd = this.handleDragEnd.bind(this);
+        this.blockInteraction = this.blockInteraction.bind(this);
 
         this.draggedElement = null;
         this.dragOffset = { x: 0, y: 0 };
+
+        // Toolbar drag state
+        this._toolbarDrag = null;
+
+        this.modes = [
+            { key: 'editText', icon: '✏️', label: 'Edit Text' },
+            { key: 'moveElements', icon: '↔️', label: 'Move' },
+            { key: 'deleteElements', icon: '🗑️', label: 'Delete' },
+            { key: 'cloneElements', icon: '📋', label: 'Clone' },
+            { key: 'outlineAll', icon: '📦', label: 'Outline' },
+            { key: 'editCSS', icon: '🎨', label: 'Edit CSS' }
+        ];
     }
 
     toggle(mode) {
-        // If same mode, toggle off
+        // If no toolbar yet, show it first
+        if (!this.toolbar) {
+            this.showToolbar();
+        }
+
+        // If same mode, toggle off (but keep toolbar)
         if (this.active && this.mode === mode) {
-            this.deactivate();
+            this.deactivateMode();
+            this.updateToolbarHighlight();
             return;
         }
 
-        // Deactivate previous mode
+        // Deactivate previous mode (but keep toolbar)
         if (this.active) {
-            this.deactivate();
+            this.deactivateMode();
         }
 
         this.mode = mode;
         this.active = true;
-        this.activate();
+        this.activateMode();
+        this.updateToolbarHighlight();
     }
 
-    activate() {
-        const modeNames = {
-            editText: 'Edit Text',
-            moveElements: 'Move Elements',
-            deleteElements: 'Delete Elements',
-            cloneElements: 'Clone Elements',
-            outlineAll: 'Outline All',
-            editCSS: 'Edit CSS'
-        };
-
-        this.manager.showFloatingControl(`Live Editor: ${modeNames[this.mode]}`, () => this.deactivate());
-
+    activateMode() {
         switch (this.mode) {
             case 'editText':
                 document.body.contentEditable = 'true';
                 document.body.style.cursor = 'text';
-                this.manager.showToast('Click anywhere to edit text');
+                // Block clicks on buttons, links, form elements so they can be edited
+                document.addEventListener('click', this.blockInteraction, true);
+                document.addEventListener('submit', this.blockInteraction, true);
+                this.manager.showToast('Click anywhere to edit text (buttons disabled)');
                 break;
 
             case 'moveElements':
@@ -61,6 +74,7 @@ class LiveEditorTool {
                 document.addEventListener('mousemove', this.handleDrag, true);
                 document.addEventListener('mouseup', this.handleDragEnd, true);
                 document.addEventListener('mouseover', this.handleHover, true);
+                document.addEventListener('click', this.blockInteraction, true);
                 this.manager.showToast('Drag elements to move them');
                 break;
 
@@ -95,7 +109,7 @@ class LiveEditorTool {
         }
     }
 
-    deactivate() {
+    deactivateMode() {
         document.body.contentEditable = 'false';
         document.body.style.cursor = 'default';
         document.removeEventListener('click', this.handleClick, true);
@@ -103,6 +117,9 @@ class LiveEditorTool {
         document.removeEventListener('mousedown', this.handleDragStart, true);
         document.removeEventListener('mousemove', this.handleDrag, true);
         document.removeEventListener('mouseup', this.handleDragEnd, true);
+        // Remove edit text interaction blockers
+        document.removeEventListener('click', this.blockInteraction, true);
+        document.removeEventListener('submit', this.blockInteraction, true);
 
         this.removeHoverStyle();
         this.removeAllOutlines();
@@ -114,14 +131,118 @@ class LiveEditorTool {
             el.style.backgroundColor = '';
         });
 
-        this.manager.removeFloatingControl();
-        this.manager.showToast('Live Editor Inactive');
         this.active = false;
         this.mode = null;
     }
 
+    deactivate() {
+        this.deactivateMode();
+        this.removeToolbar();
+        this.manager.showToast('Live Editor Inactive');
+    }
+
+    // --- Floating Toolbar ---
+
+    showToolbar() {
+        this.removeToolbar();
+
+        const toolbar = document.createElement('div');
+        toolbar.className = 'mte-live-editor-toolbar';
+
+        // Mode buttons
+        this.modes.forEach(m => {
+            const btn = document.createElement('button');
+            btn.className = 'mte-toolbar-btn';
+            btn.dataset.mode = m.key;
+            btn.innerHTML = `<span class="mte-toolbar-icon">${m.icon}</span>${m.label}`;
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.toggle(m.key);
+            });
+            toolbar.appendChild(btn);
+        });
+
+        // Divider
+        const divider = document.createElement('div');
+        divider.className = 'mte-toolbar-divider';
+        toolbar.appendChild(divider);
+
+        // Stop button
+        const stopBtn = document.createElement('button');
+        stopBtn.className = 'mte-toolbar-stop';
+        stopBtn.textContent = '✕ Stop';
+        stopBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.deactivate();
+        });
+        toolbar.appendChild(stopBtn);
+
+        // Drag support for toolbar
+        toolbar.addEventListener('mousedown', (e) => {
+            // Only drag from the toolbar background, not from buttons
+            if (e.target !== toolbar) return;
+            e.preventDefault();
+            const rect = toolbar.getBoundingClientRect();
+            this._toolbarDrag = {
+                offsetX: e.clientX - rect.left,
+                offsetY: e.clientY - rect.top,
+                onMove: (ev) => {
+                    toolbar.style.left = (ev.clientX - this._toolbarDrag.offsetX) + 'px';
+                    toolbar.style.top = (ev.clientY - this._toolbarDrag.offsetY) + 'px';
+                    toolbar.style.transform = 'none';
+                },
+                onUp: () => {
+                    document.removeEventListener('mousemove', this._toolbarDrag.onMove, true);
+                    document.removeEventListener('mouseup', this._toolbarDrag.onUp, true);
+                    this._toolbarDrag = null;
+                }
+            };
+            document.addEventListener('mousemove', this._toolbarDrag.onMove, true);
+            document.addEventListener('mouseup', this._toolbarDrag.onUp, true);
+        });
+
+        document.body.appendChild(toolbar);
+        this.toolbar = toolbar;
+    }
+
+    removeToolbar() {
+        if (this.toolbar) {
+            this.toolbar.remove();
+            this.toolbar = null;
+        }
+        // Also clean up old floating control if any
+        this.manager.removeFloatingControl();
+    }
+
+    updateToolbarHighlight() {
+        if (!this.toolbar) return;
+        this.toolbar.querySelectorAll('.mte-toolbar-btn').forEach(btn => {
+            if (btn.dataset.mode === this.mode) {
+                btn.classList.add('active');
+            } else {
+                btn.classList.remove('active');
+            }
+        });
+    }
+
+    // --- Block interaction for Edit Text mode ---
+
+    blockInteraction(e) {
+        // Allow toolbar clicks
+        if (e.target.closest('.mte-live-editor-toolbar')) return;
+
+        const el = e.target.closest('a, button, input, select, textarea, [onclick], [role="button"]');
+        if (el) {
+            e.preventDefault();
+            e.stopPropagation();
+            e.stopImmediatePropagation();
+        }
+    }
+
+    // --- Event Handlers (unchanged) ---
+
     handleHover(e) {
-        if (e.target.closest('.mte-floating-control') || e.target.closest('#mte-css-panel')) return;
+        if (e.target.closest('.mte-live-editor-toolbar') || e.target.closest('.mte-floating-control') || e.target.closest('#mte-css-panel')) return;
 
         e.stopPropagation();
 
@@ -133,7 +254,7 @@ class LiveEditorTool {
     }
 
     handleClick(e) {
-        if (e.target.closest('.mte-floating-control') || e.target.closest('#mte-css-panel')) return;
+        if (e.target.closest('.mte-live-editor-toolbar') || e.target.closest('.mte-floating-control') || e.target.closest('#mte-css-panel')) return;
 
         e.preventDefault();
         e.stopPropagation();
@@ -159,7 +280,7 @@ class LiveEditorTool {
     }
 
     handleDragStart(e) {
-        if (e.target.closest('.mte-floating-control')) return;
+        if (e.target.closest('.mte-live-editor-toolbar') || e.target.closest('.mte-floating-control')) return;
         if (e.button !== 0) return;
 
         e.preventDefault();
@@ -205,6 +326,8 @@ class LiveEditorTool {
         this.draggedElement = null;
     }
 
+    // --- Style Helpers (unchanged) ---
+
     addHoverStyle(bgColor, outlineColor) {
         this.styleElement = document.createElement('style');
         this.styleElement.id = 'mte-live-editor-style';
@@ -247,9 +370,49 @@ class LiveEditorTool {
         this.removeCSSPanel();
         this.selectedCSSElement = el;
 
+        // Snapshot original computed styles BEFORE any edits
         const computed = window.getComputedStyle(el);
+        const origValues = {
+            width: computed.width,
+            height: computed.height,
+            backgroundColor: computed.backgroundColor,
+            color: computed.color,
+            fontSize: computed.fontSize,
+            padding: computed.padding,
+            margin: computed.margin,
+            border: computed.border,
+            borderRadius: computed.borderRadius
+        };
+
+        // Safe hex conversion - returns #000000 if transparent/unparseable (for color picker)
+        const safeHex = (val) => {
+            const hex = Utils.rgbToHex(val);
+            return (hex && hex.startsWith('#')) ? hex : '#000000';
+        };
+
         const panel = Utils.createEl('div', 'mte-css-panel');
         panel.id = 'mte-css-panel';
+
+        // Helper to build a numeric row with stepper buttons
+        const numericRow = (label, prop, value) => `
+            <div class="mte-css-group">
+                <label>${label}</label>
+                <div style="display: flex; gap: 4px; align-items: center;">
+                    <input type="text" data-prop="${prop}" value="${value}" style="flex: 1;">
+                    <button class="mte-css-step" data-prop="${prop}" data-dir="-1" title="-1px">▼</button>
+                    <button class="mte-css-step" data-prop="${prop}" data-dir="1" title="+1px">▲</button>
+                </div>
+            </div>`;
+
+        // Helper to build a color row
+        const colorRow = (label, prop, value) => `
+            <div class="mte-css-group">
+                <label>${label}</label>
+                <div style="display: flex; gap: 6px;">
+                    <input type="color" data-prop="${prop}" value="${safeHex(value)}" style="width: 40px; height: 32px; padding: 2px; border: 1px solid #334155; border-radius: 4px; cursor: pointer;">
+                    <input type="text" data-prop="${prop}" value="${value}" style="flex: 1;">
+                </div>
+            </div>`;
 
         panel.innerHTML = `
             <div class="mte-panel-header">
@@ -259,48 +422,18 @@ class LiveEditorTool {
             <div class="mte-panel-content" style="padding: 12px; max-height: 400px; overflow-y: auto;">
                 <div style="margin-bottom: 12px; font-size: 11px; color: #64748b;">&lt;${el.tagName.toLowerCase()}&gt;</div>
                 
-                <div class="mte-css-group">
-                    <label>Width</label>
-                    <input type="text" data-prop="width" value="${computed.width}">
-                </div>
-                <div class="mte-css-group">
-                    <label>Height</label>
-                    <input type="text" data-prop="height" value="${computed.height}">
-                </div>
-                <div class="mte-css-group">
-                    <label>Background</label>
-                    <div style="display: flex; gap: 6px;">
-                        <input type="color" data-prop="backgroundColor" value="${Utils.rgbToHex(computed.backgroundColor)}" style="width: 40px; height: 32px; padding: 2px; border: 1px solid #334155; border-radius: 4px; cursor: pointer;">
-                        <input type="text" data-prop="backgroundColor" value="${computed.backgroundColor}" style="flex: 1;">
-                    </div>
-                </div>
-                <div class="mte-css-group">
-                    <label>Color</label>
-                    <div style="display: flex; gap: 6px;">
-                        <input type="color" data-prop="color" value="${Utils.rgbToHex(computed.color)}" style="width: 40px; height: 32px; padding: 2px; border: 1px solid #334155; border-radius: 4px; cursor: pointer;">
-                        <input type="text" data-prop="color" value="${computed.color}" style="flex: 1;">
-                    </div>
-                </div>
-                <div class="mte-css-group">
-                    <label>Font Size</label>
-                    <input type="text" data-prop="fontSize" value="${computed.fontSize}">
-                </div>
-                <div class="mte-css-group">
-                    <label>Padding</label>
-                    <input type="text" data-prop="padding" value="${computed.padding}">
-                </div>
-                <div class="mte-css-group">
-                    <label>Margin</label>
-                    <input type="text" data-prop="margin" value="${computed.margin}">
-                </div>
+                ${numericRow('Width', 'width', origValues.width)}
+                ${numericRow('Height', 'height', origValues.height)}
+                ${colorRow('Background', 'backgroundColor', origValues.backgroundColor)}
+                ${colorRow('Color', 'color', origValues.color)}
+                ${numericRow('Font Size', 'fontSize', origValues.fontSize)}
+                ${numericRow('Padding', 'padding', origValues.padding)}
+                ${numericRow('Margin', 'margin', origValues.margin)}
                 <div class="mte-css-group">
                     <label>Border</label>
-                    <input type="text" data-prop="border" value="${computed.border}">
+                    <input type="text" data-prop="border" value="${origValues.border}">
                 </div>
-                <div class="mte-css-group">
-                    <label>Border Radius</label>
-                    <input type="text" data-prop="borderRadius" value="${computed.borderRadius}">
-                </div>
+                ${numericRow('Border Radius', 'borderRadius', origValues.borderRadius)}
                 
                 <button id="mte-css-apply" style="
                     width: 100%;
@@ -333,10 +466,33 @@ class LiveEditorTool {
                     color: #e2e8f0;
                     font-size: 12px;
                     font-family: monospace;
+                    box-sizing: border-box;
                 }
                 .mte-css-group input[type="text"]:focus {
                     outline: none;
                     border-color: #6366f1;
+                }
+                .mte-css-step {
+                    width: 28px;
+                    height: 28px;
+                    background: #1e293b;
+                    border: 1px solid #334155;
+                    border-radius: 4px;
+                    color: #e2e8f0;
+                    cursor: pointer;
+                    font-size: 10px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    flex-shrink: 0;
+                    transition: all 0.1s;
+                }
+                .mte-css-step:hover {
+                    background: #334155;
+                    border-color: #6366f1;
+                }
+                .mte-css-step:active {
+                    background: #6366f1;
                 }
             </style>
         `;
@@ -347,13 +503,34 @@ class LiveEditorTool {
         // Close button
         document.getElementById('mte-css-close').onclick = () => this.removeCSSPanel();
 
+        // Stepper buttons (▲▼)
+        panel.querySelectorAll('.mte-css-step').forEach(stepBtn => {
+            stepBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                const prop = stepBtn.dataset.prop;
+                const dir = parseInt(stepBtn.dataset.dir, 10);
+                const textInput = panel.querySelector(`input[type="text"][data-prop="${prop}"]`);
+                if (!textInput) return;
+
+                const current = textInput.value;
+                // Parse numeric value and unit
+                const match = current.match(/^(-?\d+(?:\.\d+)?)(px|em|rem|%|vh|vw|pt)?$/);
+                if (match) {
+                    const num = parseFloat(match[1]) + dir;
+                    const unit = match[2] || 'px';
+                    const newVal = num + unit;
+                    textInput.value = newVal;
+                    el.style[prop] = newVal;
+                }
+            });
+        });
+
         // Sync color picker with text input
         panel.querySelectorAll('input[type="color"]').forEach(colorInput => {
             colorInput.addEventListener('input', (e) => {
                 const prop = e.target.dataset.prop;
                 const textInput = panel.querySelector(`input[type="text"][data-prop="${prop}"]`);
                 if (textInput) textInput.value = e.target.value;
-                // Live preview
                 el.style[prop] = e.target.value;
             });
         });

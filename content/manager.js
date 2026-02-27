@@ -72,6 +72,12 @@ class ExtensionManager {
             }
         } else if (req.action === 'toggleLiveEditor') {
             this.liveEditor.toggle(req.mode);
+        } else if (req.action === 'showLiveEditorToolbar') {
+            if (!this.liveEditor.toolbar) {
+                this.liveEditor.showToolbar();
+            } else {
+                this.liveEditor.deactivate();
+            }
         }
     }
 

@@ -556,3 +556,92 @@
 .mte-floating-control button:hover {
     background: #dc2626;
 }
+
+/* Live Editor Floating Toolbar */
+.mte-live-editor-toolbar {
+    position: fixed;
+    top: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #0f172a;
+    border: 1px solid #334155;
+    border-radius: 12px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(99, 102, 241, 0.15);
+    z-index: 100002;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px;
+    font-family: -apple-system, system-ui, sans-serif;
+    font-size: 12px;
+    user-select: none;
+    cursor: move;
+    backdrop-filter: blur(12px);
+}
+
+.mte-toolbar-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    padding: 8px 10px;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    color: #94a3b8;
+    cursor: pointer;
+    font-size: 10px;
+    font-weight: 500;
+    font-family: inherit;
+    white-space: nowrap;
+    transition: all 0.15s ease;
+    min-width: 52px;
+}
+
+.mte-toolbar-btn:hover {
+    background: #1e293b;
+    border-color: #475569;
+    color: #e2e8f0;
+}
+
+.mte-toolbar-btn.active {
+    background: #6366f1;
+    border-color: #818cf8;
+    color: #ffffff;
+    box-shadow: 0 0 12px rgba(99, 102, 241, 0.4);
+}
+
+.mte-toolbar-btn .mte-toolbar-icon {
+    font-size: 18px;
+    line-height: 1;
+}
+
+.mte-toolbar-divider {
+    width: 1px;
+    height: 32px;
+    background: #334155;
+    margin: 0 2px;
+    flex-shrink: 0;
+}
+
+.mte-toolbar-stop {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 8px 12px;
+    background: rgba(239, 68, 68, 0.15);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    border-radius: 8px;
+    color: #ef4444;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
+    font-family: inherit;
+    transition: all 0.15s ease;
+}
+
+.mte-toolbar-stop:hover {
+    background: #ef4444;
+    border-color: #ef4444;
+    color: #ffffff;
+}

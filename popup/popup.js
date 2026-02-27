@@ -213,80 +213,12 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // Feature 6: Live Editor
-    const liveEditorBtn = document.getElementById('btn-live-editor');
-    const liveEditorResult = document.getElementById('result-live-editor');
-
-    liveEditorBtn.addEventListener('click', () => {
-        const isOpen = !liveEditorResult.classList.contains('hidden');
-        closeAllPanels();
-
-        if (!isOpen) {
-            liveEditorBtn.classList.add('active');
-            liveEditorResult.classList.remove('hidden');
-            liveEditorResult.innerHTML = `
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-                    <button class="live-mode-btn" data-mode="editText">
-                        <span>✏️</span>
-                        <span>Edit Text</span>
-                    </button>
-                    <button class="live-mode-btn" data-mode="moveElements">
-                        <span>↔️</span>
-                        <span>Move</span>
-                    </button>
-                    <button class="live-mode-btn" data-mode="deleteElements">
-                        <span>🗑️</span>
-                        <span>Delete</span>
-                    </button>
-                    <button class="live-mode-btn" data-mode="cloneElements">
-                        <span>📋</span>
-                        <span>Clone</span>
-                    </button>
-                    <button class="live-mode-btn" data-mode="outlineAll">
-                        <span>📦</span>
-                        <span>Outline</span>
-                    </button>
-                    <button class="live-mode-btn" data-mode="editCSS">
-                        <span>🎨</span>
-                        <span>Edit CSS</span>
-                    </button>
-                </div>
-                <style>
-                    .live-mode-btn {
-                        display: flex;
-                        flex-direction: column;
-                        align-items: center;
-                        gap: 4px;
-                        padding: 12px 8px;
-                        background: #f8fafc;
-                        border: 1px solid #e2e8f0;
-                        border-radius: 6px;
-                        cursor: pointer;
-                        font-size: 12px;
-                        color: #334155;
-                        transition: all 0.15s;
-                    }
-                    .live-mode-btn:hover {
-                        background: #eef2ff;
-                        border-color: #6366f1;
-                    }
-                    .live-mode-btn span:first-child {
-                        font-size: 20px;
-                    }
-                </style>
-            `;
-
-            // Bind click events
-            liveEditorResult.querySelectorAll('.live-mode-btn').forEach(btn => {
-                btn.onclick = () => {
-                    const mode = btn.dataset.mode;
-                    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-                        chrome.tabs.sendMessage(tabs[0].id, { action: 'toggleLiveEditor', mode: mode });
-                        window.close();
-                    });
-                };
-            });
-        }
+    // Feature 6: Live Editor — directly open toolbar on page
+    document.getElementById('btn-live-editor').addEventListener('click', () => {
+        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+            chrome.tabs.sendMessage(tabs[0].id, { action: 'showLiveEditorToolbar' });
+            window.close();
+        });
     });
 
     // Feature 7: API Activity Monitor

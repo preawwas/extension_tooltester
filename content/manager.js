@@ -7,6 +7,7 @@ class ExtensionManager {
         this.colorPicker = new ColorPickerTool(this);
         this.apiMonitor = new ApiMonitorTool(this);
         this.liveEditor = new LiveEditorTool(this);
+        this.voiceRecorder = new VoiceRecorderTool(this);
         this.floatingControl = null;
 
         this.init();
@@ -78,6 +79,8 @@ class ExtensionManager {
             } else {
                 this.liveEditor.deactivate();
             }
+        } else if (req.action === 'toggleVoiceRecorder') {
+            this.voiceRecorder.toggle();
         }
     }
 

@@ -20,6 +20,17 @@ document.addEventListener('DOMContentLoaded', () => {
         chrome.storage.local.set({ persistentMode: isChecked });
     });
 
+    // Feature 0: Voice Recorder
+    const voiceBtn = document.getElementById('btn-voice-recorder');
+    if (voiceBtn) {
+        voiceBtn.addEventListener('click', () => {
+            chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+                chrome.tabs.sendMessage(tabs[0].id, { action: 'toggleVoiceRecorder' });
+                window.close();
+            });
+        });
+    }
+
     // Feature 1: Font Scanner
     const fontBtn = document.getElementById('btn-font-scanner');
     const fontResult = document.getElementById('result-font-scanner');

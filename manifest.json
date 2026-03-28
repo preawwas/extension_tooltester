@@ -38,6 +38,7 @@
         "content/tools/inspector.js",
         "content/tools/live-editor.js",
         "content/tools/api-monitor.js",
+        "content/tools/voice-recorder.js",
         "content/manager.js",
         "content/main.js"
       ],

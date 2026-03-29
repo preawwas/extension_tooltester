@@ -1,13 +1,34 @@
 document.addEventListener('DOMContentLoaded', () => {
-    const btnFullPage = document.getElementById('btn-full-page');
+    // Feature 7: Screenshot (with submenu)
+    const screenshotBtn = document.getElementById('btn-screenshot');
+    const screenshotResult = document.getElementById('result-screenshot');
 
-    if (btnFullPage) {
-        btnFullPage.addEventListener('click', () => {
-            // Send message to background to start the process
-            chrome.runtime.sendMessage({ action: 'startCapture' });
-            window.close(); // Close popup
-        });
-    }
+    screenshotBtn.addEventListener('click', () => {
+        const isOpen = !screenshotResult.classList.contains('hidden');
+        closeAllPanels();
+        if (!isOpen) {
+            screenshotBtn.classList.add('active');
+            screenshotResult.classList.remove('hidden');
+        }
+    });
+
+    // 1. Crop Screenshot
+    document.getElementById('btn-crop-screenshot').addEventListener('click', () => {
+        chrome.runtime.sendMessage({ action: 'startCropCapture' });
+        window.close();
+    });
+
+    // 2. Screenshot (Browser) — visible area of current tab
+    document.getElementById('btn-browser-screenshot').addEventListener('click', () => {
+        chrome.runtime.sendMessage({ action: 'captureVisible' });
+        window.close();
+    });
+
+    // 3. Full Page Screenshot (original behavior)
+    document.getElementById('btn-fullpage-screenshot').addEventListener('click', () => {
+        chrome.runtime.sendMessage({ action: 'startCapture' });
+        window.close();
+    });
 
     // Persistence Logic
     const persistChk = document.getElementById('chk-persistence');

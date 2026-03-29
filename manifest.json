@@ -8,7 +8,9 @@
     "storage",
     "browsingData",
     "unlimitedStorage",
-    "debugger"
+    "debugger",
+    "windows",
+    "tabs"
   ],
   "host_permissions": [
     "<all_urls>"

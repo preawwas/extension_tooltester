@@ -646,6 +646,20 @@ body {
     box-shadow: 0 4px 12px rgba(99, 102, 241, 0.2);
 }
 
+.preview-btn-copy {
+    background: var(--ed-surface);
+    color: var(--ed-text);
+    border: 1px solid var(--ed-border);
+}
+
+.preview-btn-copy:hover {
+    background: var(--ed-surface2);
+    border-color: var(--ed-success);
+    color: var(--ed-success);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2);
+}
+
 .preview-btn-download {
     background: var(--ed-accent);
     color: #fff;

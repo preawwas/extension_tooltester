@@ -65,6 +65,7 @@
     const previewCanvas = $('preview-canvas');
     const previewBtnDiscard = $('preview-btn-discard');
     const previewBtnEdit = $('preview-btn-edit');
+    const previewBtnCopy = $('preview-btn-copy');
     const previewBtnDownload = $('preview-btn-download');
 
     // Editor Mode Refs
@@ -1525,7 +1526,10 @@
             const { fullWidth, fullHeight, windowWidth, windowHeight, pixelRatio, captureType } = dims;
 
             const effectiveWidth = windowWidth;
-            const cw = effectiveWidth * pixelRatio;
+            const scrollbarPx = captureType === 'window'
+                ? Math.max(0, Math.floor((dims.scrollbarWidth || 0) * pixelRatio))
+                : 0;
+            const cw = Math.max(1, effectiveWidth * pixelRatio - scrollbarPx);
             const ch = fullHeight * pixelRatio;
 
             // Set canvases
@@ -1547,25 +1551,103 @@
             pCtx.fillRect(0, 0, cw, ch);
 
             let imagesLoaded = 0;
-            let canvasCursorY = 0;
-            captures.sort((a, b) => a.y - b.y);
+            const sortedCaptures = [...captures].sort((a, b) => a.y - b.y);
+            const loadedFrames = new Array(sortedCaptures.length);
+            const contentRect = captureType === 'window' && dims.contentRect ? dims.contentRect : null;
 
-            const checkReady = () => {
-                imagesLoaded++;
-                if (imagesLoaded === captures.length) {
-                    previewLoading.style.display = 'none';
-                    previewContent.style.display = 'flex';
-                    // Keep a canvas-backed snapshot so transparent extensions remain transparent.
-                    state.bgImage = cloneCanvasSurface(canvasBg);
-                    redrawBackgroundLayer();
-                }
-            };
+            function detectStaticBands(imgA, imgB) {
+                if (!imgA || !imgB) return { left: 0, right: 0, top: 0, bottom: 0 };
 
-            captures.forEach((capture) => {
-                if (!capture.dataUrl) { checkReady(); return; }
-                const img = new Image();
-                img.onload = () => {
-                    const logicalY = capture.y * pixelRatio;
+                const w = Math.min(imgA.width, imgB.width, cw);
+                const h = Math.min(imgA.height, imgB.height);
+                if (w < 50 || h < 50) return { left: 0, right: 0, top: 0, bottom: 0 };
+
+                const probe = document.createElement('canvas');
+                probe.width = w;
+                probe.height = h;
+                const pctx = probe.getContext('2d');
+
+                pctx.clearRect(0, 0, w, h);
+                pctx.drawImage(imgA, 0, 0, w, h);
+                const dataA = pctx.getImageData(0, 0, w, h).data;
+
+                pctx.clearRect(0, 0, w, h);
+                pctx.drawImage(imgB, 0, 0, w, h);
+                const dataB = pctx.getImageData(0, 0, w, h).data;
+
+                const stepX = 12;
+                const stepY = 12;
+
+                const pixelNear = (x, y) => {
+                    const i = (y * w + x) * 4;
+                    const dr = Math.abs(dataA[i] - dataB[i]);
+                    const dg = Math.abs(dataA[i + 1] - dataB[i + 1]);
+                    const db = Math.abs(dataA[i + 2] - dataB[i + 2]);
+                    return (dr + dg + db) < 20;
+                };
+
+                const columnSimilarity = (x) => {
+                    let same = 0;
+                    let total = 0;
+                    for (let y = 0; y < h; y += stepY) {
+                        total++;
+                        if (pixelNear(x, y)) same++;
+                    }
+                    return total ? (same / total) : 0;
+                };
+
+                const rowSimilarity = (y, minX, maxX) => {
+                    let same = 0;
+                    let total = 0;
+                    for (let x = minX; x < maxX; x += stepX) {
+                        total++;
+                        if (pixelNear(x, y)) same++;
+                    }
+                    return total ? (same / total) : 0;
+                };
+
+                const threshold = 0.975;
+                const maxLeft = Math.floor(w * 0.4);
+                const maxRight = Math.floor(w * 0.4);
+                const maxTop = Math.floor(h * 0.25);
+                const maxBottom = Math.floor(h * 0.25);
+
+                let left = 0;
+                while (left < maxLeft && columnSimilarity(left) >= threshold) left++;
+
+                let right = 0;
+                while (right < maxRight && columnSimilarity(w - 1 - right) >= threshold) right++;
+
+                const coreStart = Math.max(left, 0);
+                const coreEnd = Math.max(coreStart + 1, w - right);
+
+                let top = 0;
+                while (top < maxTop && rowSimilarity(top, coreStart, coreEnd) >= threshold) top++;
+
+                let bottom = 0;
+                while (bottom < maxBottom && rowSimilarity(h - 1 - bottom, coreStart, coreEnd) >= threshold) bottom++;
+
+                if (left < 16) left = 0;
+                if (right < 16) right = 0;
+                if (top < 10) top = 0;
+                if (bottom < 10) bottom = 0;
+
+                return { left, right, top, bottom };
+            }
+
+            function composeFrames() {
+                let canvasCursorY = 0;
+                let contentCursorY = 0;
+
+                const staticBands = captureType === 'window'
+                    ? detectStaticBands(loadedFrames[0]?.img, loadedFrames[1]?.img)
+                    : { left: 0, right: 0, top: 0, bottom: 0 };
+
+                loadedFrames.forEach((frame, captureIndex) => {
+                    if (!frame || !frame.img) return;
+                    const img = frame.img;
+                    const logicalY = frame.capture.y * pixelRatio;
+
                     if (captureType === 'element') {
                         const drawY = Math.max(canvasCursorY, logicalY);
                         const skipTop = drawY - logicalY;
@@ -1575,10 +1657,81 @@
                             pCtx.drawImage(img, 0, skipTop, img.width, drawH, 0, drawY, img.width, drawH);
                             canvasCursorY = Math.max(canvasCursorY, drawY + drawH);
                         }
-                    } else {
-                        ctxBg.drawImage(img, 0, logicalY);
-                        pCtx.drawImage(img, 0, logicalY);
+                        return;
                     }
+
+                    if (captureType === 'window') {
+                        if (captureIndex === 0) {
+                            const baseW = Math.min(cw, img.width);
+                            ctxBg.drawImage(img, 0, 0, baseW, img.height, 0, logicalY, baseW, img.height);
+                            pCtx.drawImage(img, 0, 0, baseW, img.height, 0, logicalY, baseW, img.height);
+                            contentCursorY = img.height;
+                            return;
+                        }
+
+                        let srcX = staticBands.left;
+                        let srcY = staticBands.top;
+                        let srcW = img.width - staticBands.left - staticBands.right;
+                        let srcH = img.height - staticBands.top - staticBands.bottom;
+
+                        if (contentRect) {
+                            const cX = Math.max(0, Math.floor(contentRect.x * pixelRatio));
+                            const cY = Math.max(0, Math.floor(contentRect.y * pixelRatio));
+                            const cW = Math.max(1, Math.floor(contentRect.w * pixelRatio));
+                            const cH = Math.max(1, Math.floor(contentRect.h * pixelRatio));
+
+                            const clipX1 = Math.max(srcX, cX);
+                            const clipY1 = Math.max(srcY, cY);
+                            const clipX2 = Math.min(srcX + srcW, cX + cW);
+                            const clipY2 = Math.min(srcY + srcH, cY + cH);
+
+                            srcX = clipX1;
+                            srcY = clipY1;
+                            srcW = clipX2 - clipX1;
+                            srcH = clipY2 - clipY1;
+                        }
+
+                        if (srcX + srcW > cw) {
+                            srcW = Math.max(0, cw - srcX);
+                        }
+
+                        if (srcW > 0 && srcH > 0) {
+                            const baseDestY = logicalY + srcY;
+                            const drawY = Math.max(contentCursorY, baseDestY);
+                            const skipTop = drawY - baseDestY;
+                            const drawH = srcH - skipTop;
+
+                            if (drawH > 0) {
+                                ctxBg.drawImage(img, srcX, srcY + skipTop, srcW, drawH, srcX, drawY, srcW, drawH);
+                                pCtx.drawImage(img, srcX, srcY + skipTop, srcW, drawH, srcX, drawY, srcW, drawH);
+                                contentCursorY = Math.max(contentCursorY, drawY + drawH);
+                            }
+                        }
+                        return;
+                    }
+
+                    ctxBg.drawImage(img, 0, logicalY);
+                    pCtx.drawImage(img, 0, logicalY);
+                });
+            }
+
+            const checkReady = () => {
+                imagesLoaded++;
+                if (imagesLoaded === sortedCaptures.length) {
+                    composeFrames();
+                    previewLoading.style.display = 'none';
+                    previewContent.style.display = 'flex';
+                    // Keep a canvas-backed snapshot so transparent extensions remain transparent.
+                    state.bgImage = cloneCanvasSurface(canvasBg);
+                    redrawBackgroundLayer();
+                }
+            };
+
+            sortedCaptures.forEach((capture, captureIndex) => {
+                if (!capture.dataUrl) { checkReady(); return; }
+                const img = new Image();
+                img.onload = () => {
+                    loadedFrames[captureIndex] = { capture, img };
                     checkReady();
                 };
                 img.onerror = checkReady;
@@ -1596,6 +1749,30 @@
             link.download = `screenshot-${Date.now()}.png`;
             link.href = previewCanvas.toDataURL('image/png');
             link.click();
+        };
+        previewBtnCopy.onclick = async () => {
+            try {
+                if (!navigator.clipboard || !window.ClipboardItem) {
+                    showToast('Clipboard image not supported in this browser');
+                    return;
+                }
+
+                const blob = await new Promise((resolve) => {
+                    previewCanvas.toBlob(resolve, 'image/png');
+                });
+
+                if (!blob) {
+                    showToast('Failed to prepare preview image');
+                    return;
+                }
+
+                const item = new ClipboardItem({ 'image/png': blob });
+                await navigator.clipboard.write([item]);
+                showToast('Preview copied to clipboard!');
+            } catch (err) {
+                console.error('Failed to copy preview:', err);
+                showToast('Failed to copy preview');
+            }
         };
         previewBtnEdit.onclick = () => {
             previewMode.style.display = 'none';

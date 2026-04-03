@@ -388,6 +388,20 @@
     color: #ef4444;
 }
 
+#mte-api-min {
+    background: transparent;
+    border: none;
+    color: #64748b;
+    cursor: pointer;
+    font-size: 20px;
+    line-height: 1;
+    padding-bottom: 2px;
+}
+
+#mte-api-min:hover {
+    color: #0f172a;
+}
+
 #mte-api-close {
     background: transparent;
     border: none;
@@ -521,6 +535,66 @@
     font-weight: 600;
     color: #64748b;
     margin-right: 4px;
+}
+
+#mte-api-monitor.mte-minimized {
+    width: 60px !important;
+    height: 60px !important;
+    min-height: 60px !important;
+    border-radius: 30px !important;
+    padding: 0 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    resize: none !important;
+    background: #6366f1 !important;
+    color: white !important;
+    cursor: pointer !important;
+    border: none !important;
+    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4) !important;
+    overflow: visible !important;
+}
+
+#mte-api-monitor.mte-minimized #mte-api-header,
+#mte-api-monitor.mte-minimized #mte-api-content {
+    display: none !important;
+}
+
+.mte-minimized-text {
+    display: none;
+    font-weight: 600;
+    font-size: 13px;
+    letter-spacing: 0.5px;
+    user-select: none;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.85);
+}
+
+#mte-api-monitor.mte-minimized .mte-minimized-text {
+    display: block;
+}
+
+.mte-minimized-badge {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    background: #ef4444;
+    color: white;
+    font-size: 13px;
+    font-weight: 800;
+    padding: 3px 8px;
+    border-radius: 99px;
+    display: none;
+    box-shadow: 0 3px 6px rgba(239, 68, 68, 0.5);
+    border: 2px solid #ffffff;
+    pointer-events: none;
+    min-width: 12px;
+    text-align: center;
+    z-index: 10;
+}
+
+#mte-api-monitor:not(.mte-minimized) .mte-minimized-badge {
+    display: none !important;
 }
 
 .mte-floating-control {

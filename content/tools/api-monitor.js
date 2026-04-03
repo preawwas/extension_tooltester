@@ -112,6 +112,14 @@ class ApiMonitorTool {
         left.appendChild(countContainer);
 
         const right = Utils.createEl('div', 'mte-api-controls');
+        
+        const minBtn = Utils.createEl('button', '', '−');
+        minBtn.id = 'mte-api-min';
+        minBtn.onclick = (e) => {
+            e.stopPropagation();
+            this.toggleMinimize();
+        };
+
         const clearBtn = Utils.createEl('button', '', 'Clear');
         clearBtn.id = 'mte-api-clear';
         clearBtn.onclick = () => this.clearRequests();
@@ -126,6 +134,7 @@ class ApiMonitorTool {
         };
 
         right.appendChild(clearBtn);
+        right.appendChild(minBtn);
         right.appendChild(closeBtn);
 
         header.appendChild(left);
@@ -135,8 +144,15 @@ class ApiMonitorTool {
         const content = Utils.createEl('div');
         content.id = 'mte-api-content';
 
+        const minText = Utils.createEl('div', 'mte-minimized-text', 'api');
+        
+        const minBadge = Utils.createEl('div', 'mte-minimized-badge', '0');
+        minBadge.id = 'mte-min-req-count';
+
         overlay.appendChild(header);
         overlay.appendChild(content);
+        overlay.appendChild(minText);
+        overlay.appendChild(minBadge);
 
         document.body.appendChild(overlay);
         this.overlay = overlay;
@@ -154,6 +170,11 @@ class ApiMonitorTool {
         this.overlay = null;
     }
 
+    toggleMinimize() {
+        if (!this.overlay) return;
+        this.overlay.classList.toggle('mte-minimized');
+    }
+
     clearRequests() {
         if (!this.overlay) return;
         const content = this.overlay.querySelector('#mte-api-content');
@@ -166,27 +187,45 @@ class ApiMonitorTool {
             errEl.textContent = '0';
             errEl.style.display = 'none';
         }
+        
+        const minCountEl = document.getElementById('mte-min-req-count');
+        if (minCountEl) {
+            minCountEl.textContent = '0';
+            minCountEl.style.display = 'none';
+        }
     }
 
     initDrag(handle, target) {
-        let isDragging = false, startX, startY, initialX, initialY, xOffset = 0, yOffset = 0;
+        let isDragging = false, initialX, initialY, xOffset = 0, yOffset = 0, isMoved = false;
 
         handle.addEventListener('mousedown', dragStart);
+        target.addEventListener('mousedown', (e) => {
+            if (target.classList.contains('mte-minimized')) dragStart(e);
+        });
+
         document.addEventListener('mousemove', drag);
         document.addEventListener('mouseup', dragEnd);
+
+        target.addEventListener('click', (e) => {
+            if (target.classList.contains('mte-minimized') && !isMoved) {
+                this.toggleMinimize();
+            }
+        });
 
         function dragStart(e) {
             if (e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT') return;
             initialX = e.clientX - xOffset;
             initialY = e.clientY - yOffset;
-            if (e.target === handle || handle.contains(e.target)) {
+            if (e.target === handle || handle.contains(e.target) || target.classList.contains('mte-minimized')) {
                 isDragging = true;
+                isMoved = false;
             }
         }
 
         function drag(e) {
             if (isDragging) {
                 e.preventDefault();
+                isMoved = true;
                 const currentX = e.clientX - initialX;
                 const currentY = e.clientY - initialY;
                 xOffset = currentX;
@@ -197,6 +236,7 @@ class ApiMonitorTool {
 
         function dragEnd() {
             isDragging = false;
+            setTimeout(() => { if (!isDragging) isMoved = false; }, 50);
         }
     }
 
@@ -576,7 +616,16 @@ class ApiMonitorTool {
         }
 
         const countEl = document.getElementById('mte-req-count');
-        if (countEl) countEl.textContent = parseInt(countEl.textContent) + 1;
+        if (countEl) {
+            const newCount = parseInt(countEl.textContent) + 1;
+            countEl.textContent = newCount;
+            
+            const minCountEl = document.getElementById('mte-min-req-count');
+            if (minCountEl) {
+                minCountEl.textContent = newCount;
+                minCountEl.style.display = 'block';
+            }
+        }
 
         if (s >= 500) {
             const errEl = document.getElementById('mte-err-count');

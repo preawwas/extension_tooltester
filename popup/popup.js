@@ -41,16 +41,34 @@ document.addEventListener('DOMContentLoaded', () => {
         chrome.storage.local.set({ persistentMode: isChecked });
     });
 
-    // Feature 0: Voice Recorder
+    // Feature 0: Voice Recorder (with submenu)
     const voiceBtn = document.getElementById('btn-voice-recorder');
-    if (voiceBtn) {
-        voiceBtn.addEventListener('click', () => {
-            chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-                chrome.tabs.sendMessage(tabs[0].id, { action: 'toggleVoiceRecorder' });
-                window.close();
-            });
+    const voiceResult = document.getElementById('result-voice-recorder');
+
+    voiceBtn.addEventListener('click', () => {
+        const isOpen = !voiceResult.classList.contains('hidden');
+        closeAllPanels();
+        if (!isOpen) {
+            voiceBtn.classList.add('active');
+            voiceResult.classList.remove('hidden');
+        }
+    });
+
+    // 0.1 Mic only
+    document.getElementById('btn-voice-mic').addEventListener('click', () => {
+        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+            chrome.tabs.sendMessage(tabs[0].id, { action: 'toggleVoiceRecorder', mode: 'mic' });
+            window.close();
         });
-    }
+    });
+
+    // 0.2 Desktop audio
+    document.getElementById('btn-voice-desktop').addEventListener('click', () => {
+        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+            chrome.tabs.sendMessage(tabs[0].id, { action: 'toggleVoiceRecorder', mode: 'desktop' });
+            window.close();
+        });
+    });
 
     // Feature 1: Font Scanner
     const fontBtn = document.getElementById('btn-font-scanner');

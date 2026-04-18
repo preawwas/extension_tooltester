@@ -80,7 +80,7 @@ class ExtensionManager {
                 this.liveEditor.deactivate();
             }
         } else if (req.action === 'toggleVoiceRecorder') {
-            this.voiceRecorder.toggle();
+            this.voiceRecorder.toggle(req.mode || 'mic');
         }
     }
 

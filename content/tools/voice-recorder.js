@@ -5,6 +5,7 @@ class VoiceRecorderTool {
     constructor(manager) {
         this.manager = manager;
         this.active = false;
+        this.mode = 'mic'; // 'mic' | 'desktop'
         this.mediaRecorder = null;
         this.audioChunks = [];
         this.timerInterval = null;
@@ -21,11 +22,16 @@ class VoiceRecorderTool {
         this.pauseBtn = null;
     }
 
-    async toggle() {
+    async toggle(mode = 'mic') {
         if (this.active) {
             this.stopRecording();
         } else {
-            await this.startRecording();
+            this.mode = mode;
+            if (mode === 'desktop') {
+                await this.startDesktopRecording();
+            } else {
+                await this.startRecording();
+            }
         }
     }
 
@@ -131,8 +137,141 @@ class VoiceRecorderTool {
 
     deactivate() {
         this.active = false;
+        this.mode = 'mic';
         clearInterval(this.timerInterval);
         this.removeToolbar();
+    }
+
+    async startDesktopRecording() {
+        try {
+            // Request desktop audio (user picks screen/tab/window)
+            this._desktopStream = await navigator.mediaDevices.getDisplayMedia({
+                audio: true,
+                video: true // required by API — we keep it alive but don't record it
+            });
+
+            // Also request mic for commentary
+            this._micStream = null;
+            try {
+                this._micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            } catch (e) {
+                // Mic optional for desktop mode — continue without it
+            }
+
+            // Combine audio tracks
+            const audioTracks = [];
+            const desktopAudioTrack = this._desktopStream.getAudioTracks()[0];
+            if (desktopAudioTrack) audioTracks.push(desktopAudioTrack);
+            if (this._micStream) {
+                const micAudioTrack = this._micStream.getAudioTracks()[0];
+                if (micAudioTrack) audioTracks.push(micAudioTrack);
+            }
+
+            if (audioTracks.length === 0) {
+                this.manager.showToast('ไม่พบเสียงจาก Desktop — ลองเลือก Chrome tab หรือเช็ก "Share audio"');
+                this._desktopStream.getTracks().forEach(t => t.stop());
+                if (this._micStream) this._micStream.getTracks().forEach(t => t.stop());
+                this._desktopStream = null;
+                this._micStream = null;
+                this.deactivate();
+                return;
+            }
+
+            // Mix audio tracks into a single stream via AudioContext
+            this._audioCtx = new AudioContext();
+            const dest = this._audioCtx.createMediaStreamDestination();
+
+            audioTracks.forEach(track => {
+                const source = this._audioCtx.createMediaStreamSource(new MediaStream([track]));
+                source.connect(dest);
+            });
+
+            const combinedStream = dest.stream;
+
+            // DO NOT stop video track — stopping it kills the entire capture session including audio!
+            // Instead, we just don't include it in the MediaRecorder.
+
+            let options = { mimeType: 'audio/webm' };
+            if (!MediaRecorder.isTypeSupported('audio/webm')) {
+                options = {};
+            }
+
+            this.mediaRecorder = new MediaRecorder(combinedStream, options);
+            this.audioChunks = [];
+
+            this.mediaRecorder.ondataavailable = (event) => {
+                if (event.data.size > 0) {
+                    this.audioChunks.push(event.data);
+                }
+            };
+
+            this.mediaRecorder.onstop = () => {
+                this._cleanupDesktopStreams();
+                if (this.audioChunks.length === 0) {
+                    this.deactivate();
+                    return;
+                }
+
+                const audioBlob = new Blob(this.audioChunks, { type: this.mediaRecorder.mimeType || 'audio/webm' });
+                const audioUrl = URL.createObjectURL(audioBlob);
+
+                const now = new Date();
+                const thaiDate = now.toLocaleDateString('th-TH', { day: '2-digit', month: '2-digit', year: 'numeric' }).replace(/\//g, '-');
+                const hours = now.getHours().toString().padStart(2, '0');
+                const minutes = now.getMinutes().toString().padStart(2, '0');
+                const thaiTime = `${hours}h${minutes}`;
+
+                const a = document.createElement('a');
+                a.style.display = 'none';
+                a.href = audioUrl;
+                a.download = `desktop_${thaiDate}_${thaiTime}.mp3`;
+                document.body.appendChild(a);
+                a.click();
+
+                setTimeout(() => {
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(audioUrl);
+                }, 100);
+
+                this.deactivate();
+                this.manager.showToast('บันทึกเสียง Desktop เรียบร้อย!');
+            };
+
+            this.mediaRecorder.start(100);
+            this.active = true;
+            this.isPaused = false;
+            this.elapsedSeconds = 0;
+
+            this.showToolbar();
+            this.startTimer();
+            this.manager.showToast('Desktop recording started...');
+
+            // Listen for desktop stream ending (user stops sharing)
+            this._desktopStream.getAudioTracks()[0]?.addEventListener('ended', () => {
+                if (this.active) this.stopRecording();
+            });
+
+        } catch (err) {
+            console.error('Desktop capture denied:', err);
+            this.manager.showToast('การเข้าถึง Desktop ถูกปฏิเสธ');
+            this._cleanupDesktopStreams();
+            this.deactivate();
+        }
+    }
+
+    _cleanupDesktopStreams() {
+        if (this._audioCtx) {
+            this._audioCtx.close().catch(() => {});
+            this._audioCtx = null;
+        }
+        if (this._desktopStream) {
+            this._desktopStream.getTracks().forEach(t => t.stop());
+            this._desktopStream = null;
+        }
+        if (this._micStream) {
+            this._micStream.getTracks().forEach(t => t.stop());
+            this._micStream = null;
+        }
     }
 
     startTimer() {

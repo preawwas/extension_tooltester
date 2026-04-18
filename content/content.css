@@ -538,10 +538,10 @@
 }
 
 #mte-api-monitor.mte-minimized {
-    width: 60px !important;
-    height: 60px !important;
-    min-height: 60px !important;
-    border-radius: 30px !important;
+    width: 40px !important;
+    height: 40px !important;
+    min-height: 40px !important;
+    border-radius: 20px !important;
     padding: 0 !important;
     display: flex !important;
     align-items: center !important;
@@ -563,7 +563,7 @@
 .mte-minimized-text {
     display: none;
     font-weight: 600;
-    font-size: 13px;
+    font-size: 10px;
     letter-spacing: 0.5px;
     user-select: none;
     text-transform: uppercase;
@@ -578,19 +578,19 @@
     position: absolute;
     top: -6px;
     right: -6px;
-    background: #ef4444;
-    color: white;
-    font-size: 13px;
+    background: #ff3b30;
+    color: #ffffff;
+    font-size: 11px;
     font-weight: 800;
-    padding: 3px 8px;
+    padding: 2px 6px;
     border-radius: 99px;
     display: none;
-    box-shadow: 0 3px 6px rgba(239, 68, 68, 0.5);
-    border: 2px solid #ffffff;
+    box-shadow: 0 0 0 2px #ffffff, 0 2px 8px rgba(255, 59, 48, 0.6);
     pointer-events: none;
-    min-width: 12px;
+    min-width: 16px;
     text-align: center;
     z-index: 10;
+    line-height: 1.2;
 }
 
 #mte-api-monitor:not(.mte-minimized) .mte-minimized-badge {

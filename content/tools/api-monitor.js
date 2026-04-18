@@ -154,6 +154,7 @@ class ApiMonitorTool {
         overlay.appendChild(minText);
         overlay.appendChild(minBadge);
 
+        overlay.classList.add('mte-minimized');
         document.body.appendChild(overlay);
         this.overlay = overlay;
 

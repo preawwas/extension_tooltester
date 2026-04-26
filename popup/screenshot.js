@@ -9,7 +9,7 @@
     const state = {
         // Tool
         currentTool: 'select',
-        strokeColor: '#ef4444',
+        strokeColor: '#e51c23',
         strokeWidth: 3,
         fillEnabled: false,
         fontSize: 18,
@@ -1806,19 +1806,26 @@
             btn.onclick = () => setTool(btn.dataset.tool);
         });
 
-        $('tool-color').oninput = (e) => {
-            state.strokeColor = e.target.value;
-            $('color-wrap').style.borderColor = e.target.value;
+        const updateStrokeColor = (color) => {
+            state.strokeColor = color;
+            $('tool-color').value = color.substring(0, 7);
+            $('color-wrap').style.borderColor = color;
             if (state.selectedId !== null) {
                 const obj = getObj(state.selectedId);
                 if (obj) {
-                    if (obj.stroke) obj.stroke = e.target.value;
-                    if (obj.color) obj.color = e.target.value;
-                    if (obj.fill && obj.fill !== 'transparent') obj.fill = e.target.value + '33';
+                    if (obj.stroke !== undefined) obj.stroke = color;
+                    if (obj.color !== undefined) obj.color = color;
+                    if (obj.fill && obj.fill !== 'transparent') obj.fill = color + '33';
                     render();
                 }
             }
         };
+
+        $('tool-color').oninput = (e) => updateStrokeColor(e.target.value);
+
+        document.querySelectorAll('.color-preset').forEach(btn => {
+            btn.onclick = () => updateStrokeColor(btn.dataset.color);
+        });
         $('tool-stroke-width').onchange = (e) => {
             const val = parseInt(e.target.value);
             state.strokeWidth = val;

@@ -1523,6 +1523,7 @@
             }
 
             const { captures, dims } = data;
+            const shouldAutoCopy = !!data.autoCopy;
             const { fullWidth, fullHeight, windowWidth, windowHeight, pixelRatio, captureType } = dims;
 
             const effectiveWidth = windowWidth;
@@ -1724,6 +1725,26 @@
                     // Keep a canvas-backed snapshot so transparent extensions remain transparent.
                     state.bgImage = cloneCanvasSurface(canvasBg);
                     redrawBackgroundLayer();
+
+                    // Auto-copy screenshot to clipboard
+                    if (shouldAutoCopy) {
+                        setTimeout(async () => {
+                            try {
+                                if (navigator.clipboard && window.ClipboardItem) {
+                                    const blob = await new Promise((resolve) => {
+                                        previewCanvas.toBlob(resolve, 'image/png');
+                                    });
+                                    if (blob) {
+                                        const item = new ClipboardItem({ 'image/png': blob });
+                                        await navigator.clipboard.write([item]);
+                                        showToast('📋 Screenshot copied to clipboard!');
+                                    }
+                                }
+                            } catch (err) {
+                                console.error('Auto-copy failed:', err);
+                            }
+                        }, 200);
+                    }
                 }
             };
 
@@ -1788,23 +1809,22 @@
         canvasArea.addEventListener('wheel', onWheel, { passive: false });
         window.addEventListener('keydown', onKeyDown);
 
-        // Context menu for copying/downloading
-        canvasOverlay.addEventListener('contextmenu', (e) => {
-            e.preventDefault();
-            const menu = confirm('Copy to clipboard? (OK=Copy, Cancel=Download)');
-            if (menu) {
-                copyImageToClipboard();
-            } else {
-                downloadImage();
-            }
-        });
-
         // Copy button
         $('btn-copy').onclick = copyImageToClipboard;
 
-        document.querySelectorAll('#toolbar-tools .tool-btn').forEach(btn => {
+        document.querySelectorAll('#toolbar-tools .tool-btn[data-tool]').forEach(btn => {
             btn.onclick = () => setTool(btn.dataset.tool);
         });
+
+        // Delete selected object button
+        $('btn-delete-object').onclick = () => {
+            if (state.selectedId !== null) {
+                pushHistory();
+                state.objects = state.objects.filter(o => o.id !== state.selectedId);
+                state.selectedId = null;
+                render();
+            }
+        };
 
         const updateStrokeColor = (color) => {
             state.strokeColor = color;

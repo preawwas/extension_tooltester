@@ -115,6 +115,20 @@ body {
     pointer-events: none;
 }
 
+/* Delete button — danger style */
+#btn-delete-object {
+    color: var(--ed-text-dim);
+    opacity: 0.5;
+    transition: all 0.15s ease;
+}
+
+#btn-delete-object:hover {
+    background: rgba(239, 68, 68, 0.15);
+    color: var(--ed-danger);
+    border-color: var(--ed-danger);
+    opacity: 1;
+}
+
 .tool-btn[title]:hover::after {
     content: attr(title);
     position: absolute;

@@ -115,6 +115,45 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                             captureType: 'window',
                         },
                         timestamp: Date.now(),
+                        autoCopy: true,
+                    };
+                    chrome.storage.local.set({ latestScreenshot: captureData }, () => {
+                        chrome.tabs.create({ url: 'popup/screenshot.html' });
+                    });
+                });
+            });
+        });
+    }
+
+    // --- QUICK CAPTURE (shot) — capture visible + auto-copy, open editor ---
+    if (request.action === 'quickCapture') {
+        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+            const tab = tabs[0];
+            if (!tab) return;
+            chrome.scripting.executeScript({
+                target: { tabId: tab.id },
+                func: () => ({
+                    windowWidth: window.innerWidth,
+                    windowHeight: window.innerHeight,
+                    pixelRatio: window.devicePixelRatio || 1,
+                }),
+            }, (results) => {
+                if (chrome.runtime.lastError || !results) return;
+                const { windowWidth, windowHeight, pixelRatio } = results[0].result;
+                chrome.tabs.captureVisibleTab(null, { format: 'png' }, (dataUrl) => {
+                    if (chrome.runtime.lastError || !dataUrl) return;
+                    const captureData = {
+                        captures: [{ y: 0, dataUrl }],
+                        dims: {
+                            fullWidth: windowWidth,
+                            fullHeight: windowHeight,
+                            windowWidth,
+                            windowHeight,
+                            pixelRatio,
+                            captureType: 'window',
+                        },
+                        timestamp: Date.now(),
+                        autoCopy: true,
                     };
                     chrome.storage.local.set({ latestScreenshot: captureData }, () => {
                         chrome.tabs.create({ url: 'popup/screenshot.html' });
@@ -191,6 +230,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                                 captureType: 'window',
                             },
                             timestamp: Date.now(),
+                            autoCopy: true,
                         };
                         chrome.storage.local.set({ latestScreenshot: captureData }, () => {
                             chrome.tabs.create({ url: 'popup/screenshot.html' });
@@ -257,7 +297,8 @@ async function captureLoop(tabId, dims) {
     const captureData = {
         captures,
         dims: dims, // Store all dims including captureType and bounding box
-        timestamp: Date.now()
+        timestamp: Date.now(),
+        autoCopy: true,
     };
 
     chrome.storage.local.set({ 'latestScreenshot': captureData }, () => {

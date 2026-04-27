@@ -66,13 +66,19 @@
           </div>
         </div>
 
-        <!-- Screenshot (with submenu) -->
-        <div class="tool-item">
-          <button id="btn-screenshot" class="premium-btn">
+        <!-- Screenshot (with submenu + quick shot) -->
+        <div class="tool-item tool-item-row" style="flex-wrap: wrap;">
+          <button id="btn-screenshot" class="premium-btn" style="flex: 1;">
             <span class="icon">📸</span>
             <span>Screenshot</span>
           </button>
-          <div id="result-screenshot" class="tool-result hidden">
+          <button id="btn-quick-screenshot" class="persistence-toggle" title="Quick Snap (visible tab)">
+            <div style="width: 36px; height: 20px; display: flex; align-items: center; justify-content: center; background: #6366f1; border-radius: 10px; font-size: 8px; font-weight: 800; color: #fff; text-transform: uppercase; letter-spacing: 0.5px;">
+              Quick
+            </div>
+            <span style="font-size: 9px; color: #64748b; margin-top: 3px; font-weight: 500;">Snap</span>
+          </button>
+          <div id="result-screenshot" class="tool-result hidden" style="width: 100%;">
             <div style="display:flex;flex-direction:column;gap:8px;">
 
               <button id="btn-crop-screenshot" style="display:flex;align-items:center;gap:10px;padding:12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;cursor:pointer;font-size:13px;text-align:left;width:100%">
@@ -274,6 +280,19 @@
       background: #f8fafc;
       border: 1px solid #e2e8f0;
       border-radius: 8px;
+      transition: all 0.2s ease;
+      outline: none;
+      font-family: inherit;
+    }
+
+    button.persistence-toggle:hover {
+      background: #f1f5f9;
+      border-color: #cbd5e1;
+      transform: translateY(-1px);
+    }
+
+    button.persistence-toggle:active {
+      transform: translateY(0);
     }
 
     /* Toggle Switch */

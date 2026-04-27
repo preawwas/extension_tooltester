@@ -30,6 +30,12 @@ document.addEventListener('DOMContentLoaded', () => {
         window.close();
     });
 
+    // Quick Screenshot (shot) — immediate visible capture
+    document.getElementById('btn-quick-screenshot').addEventListener('click', () => {
+        chrome.runtime.sendMessage({ action: 'quickCapture' });
+        window.close();
+    });
+
     // Persistence Logic
     const persistChk = document.getElementById('chk-persistence');
     chrome.storage.local.get(['persistentMode'], (result) => {

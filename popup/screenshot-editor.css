@@ -794,3 +794,17 @@ body {
     width: 8px;
     height: 8px;
 }
+
+/* ===== NUMBER INPUT POLISH ===== */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+input[type="number"] {
+    -moz-appearance: textfield;
+}
+#step-modal-input:focus {
+    border-color: var(--ed-accent) !important;
+    box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+}

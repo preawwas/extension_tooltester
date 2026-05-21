@@ -933,6 +933,74 @@
         render();
     }
 
+    // ===== STEP EDITING (INLINE) =====
+    function startStepEdit(obj) {
+        const existing = canvasWrapper.querySelector('.inline-step-input');
+        if (existing) existing.remove();
+
+        const input = document.createElement('input');
+        input.type = 'number';
+        input.className = 'inline-step-input';
+        input.value = obj.number;
+        input.min = 1;
+        input.max = 999;
+        
+        input.style.cssText = `
+            position: absolute;
+            left: ${obj.x - 16}px;
+            top: ${obj.y - 16}px;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: ${obj.color || state.strokeColor};
+            color: #ffffff;
+            border: 2px solid #ffffff;
+            font: bold 14px "Segoe UI", sans-serif;
+            text-align: center;
+            padding: 0;
+            margin: 0;
+            outline: none;
+            box-shadow: 0 0 8px rgba(0,0,0,0.5);
+            z-index: 1000;
+        `;
+
+        const originalNumber = obj.number;
+        obj.number = '';
+        render();
+
+        const saveAndClose = () => {
+            let val = parseInt(input.value, 10);
+            if (!isNaN(val) && val >= 1) {
+                pushHistory();
+                obj.number = val;
+            } else {
+                obj.number = originalNumber;
+            }
+            input.remove();
+            render();
+        };
+
+        input.onkeydown = (e) => {
+            if (e.key === 'Enter') {
+                saveAndClose();
+                e.preventDefault();
+            } else if (e.key === 'Escape') {
+                obj.number = originalNumber;
+                input.remove();
+                render();
+                e.preventDefault();
+            }
+        };
+
+        input.onblur = saveAndClose;
+
+        canvasWrapper.appendChild(input);
+        setTimeout(() => {
+            input.focus();
+            input.select();
+        }, 50);
+    }
+
     // ===== MOUSE HANDLERS =====
     
     function onPointerDown(e) {
@@ -1045,7 +1113,7 @@
                 const obj = { id: genId(), type: 'step', x: snx, y: sny, number: state.stepCounter, color: state.strokeColor };
                 state.objects.push(obj);
                 state.stepCounter++;
-                stepCounterValue.textContent = state.stepCounter;
+                stepCounterValue.value = state.stepCounter;
                 state.selectedId = obj.id;
                 render();
                 break;
@@ -1302,6 +1370,11 @@
 
     // ===== KEYBOARD =====
     function onKeyDown(e) {
+        // Ignore global shortcuts when focused on inputs or textareas
+        if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA')) {
+            return;
+        }
+
         // If modal is open, only handle modal shortcuts
         if (state.editingTextId !== null) {
             if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
@@ -1885,7 +1958,13 @@
         $('btn-grid').onclick = toggleGrid;
         $('btn-reset-steps').onclick = () => {
             state.stepCounter = 1;
-            stepCounterValue.textContent = '1';
+            stepCounterValue.value = '1';
+        };
+        stepCounterValue.onchange = () => {
+            let val = parseInt(stepCounterValue.value, 10);
+            if (isNaN(val) || val < 1) val = 1;
+            state.stepCounter = val;
+            stepCounterValue.value = val;
         };
 
         $('btn-zoom-in').onclick = () => zoomTo(state.zoom * 1.2);
@@ -1907,7 +1986,10 @@
             const hitId = hitTest(x, y);
             if (hitId) {
                 const obj = getObj(hitId);
-                if (obj && obj.type === 'text') startTextEdit(obj);
+                if (obj) {
+                    if (obj.type === 'text') startTextEdit(obj);
+                    else if (obj.type === 'step') startStepEdit(obj);
+                }
             }
         };
 

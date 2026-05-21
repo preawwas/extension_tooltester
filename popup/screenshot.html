@@ -205,7 +205,7 @@
             <!-- Step counter display -->
             <div class="toolbar-group" id="step-counter-display" style="display:none">
                 <span class="toolbar-label">Next step:</span>
-                <span id="step-counter-value" style="color:var(--ed-accent);font-weight:700;font-size:14px">1</span>
+                <input type="number" id="step-counter-value" min="1" max="999" value="1" style="color:var(--ed-accent);font-weight:700;font-size:14px;width:52px;text-align:center;background:var(--ed-surface2);border:1px solid var(--ed-border);border-radius:6px;outline:none;padding:2px 4px;" />
                 <button class="tool-btn" id="btn-reset-steps" title="Reset counter" style="width:28px;height:28px">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
                         <polyline points="1 4 1 10 7 10" />

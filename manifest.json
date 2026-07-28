@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Tools for Tester",
-  "version": "4.0",
+  "version": "4.5",
   "description": "A comprehensive toolkit for testers and developers with Preaw & Champ",
   "permissions": [
     "scripting",
@@ -41,6 +41,7 @@
         "content/tools/live-editor.js",
         "content/tools/api-monitor.js",
         "content/tools/voice-recorder.js",
+        "content/tools/locator-recorder.js",
         "content/manager.js",
         "content/main.js"
       ],

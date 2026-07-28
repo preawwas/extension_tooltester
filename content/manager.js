@@ -8,6 +8,7 @@ class ExtensionManager {
         this.apiMonitor = new ApiMonitorTool(this);
         this.liveEditor = new LiveEditorTool(this);
         this.voiceRecorder = new VoiceRecorderTool(this);
+        this.locatorRecorder = new LocatorRecorderTool(this);
         this.floatingControl = null;
 
         this.init();
@@ -50,6 +51,7 @@ class ExtensionManager {
                 if (res.activeTool === 'fontScanner' && res.activeToolArgs) {
                     FontScanner.highlight(res.activeToolArgs.fontSize);
                 }
+                if (res.activeTool === 'locatorRecorder') this.locatorRecorder.toggle(true);
             }
         });
     }
@@ -81,6 +83,16 @@ class ExtensionManager {
             }
         } else if (req.action === 'toggleVoiceRecorder') {
             this.voiceRecorder.toggle(req.mode || 'mic');
+        } else if (req.action === 'toggleLocatorRecorder') {
+            const forceState = (typeof req.force === 'boolean') ? req.force : null;
+            this.locatorRecorder.toggle(forceState);
+        } else if (req.action === 'clearLocatorRecords') {
+            if (window.top === window.self) this.locatorRecorder.clearRecords();
+        } else if (req.action === 'receiveLocatorRecord') {
+            // Element picked inside an iframe — the panel only lives in the top frame
+            if (window.top === window.self && this.locatorRecorder.active) {
+                this.locatorRecorder.addRecord(req.data);
+            }
         }
     }
 

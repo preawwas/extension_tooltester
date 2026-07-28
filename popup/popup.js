@@ -88,7 +88,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!isOpen) {
             fontBtn.classList.add('active');
             fontResult.classList.remove('hidden');
-            fontResult.innerHTML = '<p style="color:#64748b;font-size:12px;">Scanning...</p>';
+            fontResult.innerHTML = '<p class="panel-msg">Scanning…</p>';
             chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
                 chrome.tabs.sendMessage(tabs[0].id, { action: 'scanFonts' });
             });
@@ -100,6 +100,47 @@ document.addEventListener('DOMContentLoaded', () => {
         chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
             chrome.tabs.sendMessage(tabs[0].id, { action: 'toggleInspector' });
             window.close();
+        });
+    });
+
+    // Feature 2.5: Locator Recorder
+    const locatorBtn = document.getElementById('btn-locator-recorder');
+    const locatorResult = document.getElementById('result-locator-recorder');
+
+    locatorBtn.addEventListener('click', () => {
+        const isOpen = !locatorResult.classList.contains('hidden');
+        closeAllPanels();
+
+        if (!isOpen) {
+            locatorBtn.classList.add('active');
+            locatorResult.classList.remove('hidden');
+
+            chrome.storage.local.get(['mteLocatorRecords'], (res) => {
+                const n = Array.isArray(res.mteLocatorRecords) ? res.mteLocatorRecords.length : 0;
+                const label = document.getElementById('locator-count-label');
+                if (label) {
+                    label.textContent = n > 0
+                        ? `เก็บไว้แล้ว ${n} locator — กดเพื่อล้างทั้งหมด`
+                        : 'ยังไม่มี locator ที่เก็บไว้';
+                }
+            });
+        }
+    });
+
+    document.getElementById('btn-locator-start').addEventListener('click', () => {
+        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+            chrome.tabs.sendMessage(tabs[0].id, { action: 'toggleLocatorRecorder' });
+            window.close();
+        });
+    });
+
+    document.getElementById('btn-locator-clear').addEventListener('click', () => {
+        chrome.storage.local.set({ mteLocatorRecords: [] }, () => {
+            chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+                chrome.tabs.sendMessage(tabs[0].id, { action: 'clearLocatorRecords' }).catch(() => { });
+            });
+            const label = document.getElementById('locator-count-label');
+            if (label) label.textContent = '✓ ล้างเรียบร้อย';
         });
     });
 
@@ -115,42 +156,20 @@ document.addEventListener('DOMContentLoaded', () => {
             colorBtn.classList.add('active');
             colorResult.classList.remove('hidden');
             colorResult.innerHTML = `
-                <div style="display: flex; flex-direction: column; gap: 8px;">
-                    <button id="btn-css-color" style="
-                        display: flex;
-                        align-items: center;
-                        gap: 10px;
-                        padding: 12px;
-                        background: #f8fafc;
-                        border: 1px solid #e2e8f0;
-                        border-radius: 6px;
-                        cursor: pointer;
-                        font-size: 13px;
-                        text-align: left;
-                    ">
-                        <span style="font-size: 18px;">🎨</span>
-                        <div>
-                            <div style="font-weight: 600; color: #1e293b;">CSS Color</div>
-                            <div style="font-size: 11px; color: #64748b;">ดึงค่า CSS (text, bg, border)</div>
-                        </div>
+                <div class="sub-list">
+                    <button id="btn-css-color" class="sub-btn">
+                        <span class="sub-icon" aria-hidden="true">🎨</span>
+                        <span>
+                            <span class="sub-title">CSS Color</span>
+                            <span class="sub-desc">ดึงค่า CSS (text, bg, border)</span>
+                        </span>
                     </button>
-                    <button id="btn-eyedropper" style="
-                        display: flex;
-                        align-items: center;
-                        gap: 10px;
-                        padding: 12px;
-                        background: #f8fafc;
-                        border: 1px solid #e2e8f0;
-                        border-radius: 6px;
-                        cursor: pointer;
-                        font-size: 13px;
-                        text-align: left;
-                    ">
-                        <span style="font-size: 18px;">💧</span>
-                        <div>
-                            <div style="font-weight: 600; color: #1e293b;">Eyedropper</div>
-                            <div style="font-size: 11px; color: #64748b;">ดูดสีจาก pixel จริง</div>
-                        </div>
+                    <button id="btn-eyedropper" class="sub-btn">
+                        <span class="sub-icon" aria-hidden="true">💧</span>
+                        <span>
+                            <span class="sub-title">Eyedropper</span>
+                            <span class="sub-desc">ดูดสีจาก pixel จริง</span>
+                        </span>
                     </button>
                 </div>
             `;
@@ -173,29 +192,21 @@ document.addEventListener('DOMContentLoaded', () => {
                         await navigator.clipboard.writeText(result.sRGBHex);
                         // Show result
                         colorResult.innerHTML = `
-                            <div style="text-align: center; padding: 16px;">
-                                <div style="
-                                    width: 60px;
-                                    height: 60px;
-                                    background: ${result.sRGBHex};
-                                    border-radius: 8px;
-                                    margin: 0 auto 12px;
-                                    border: 2px solid #e2e8f0;
-                                "></div>
-                                <div style="font-size: 18px; font-weight: 700; color: #1e293b;">${result.sRGBHex}</div>
-                                <div style="font-size: 12px; color: #10b981; margin-top: 8px;">✓ Copied to clipboard!</div>
+                            <div class="swatch-result">
+                                <div class="swatch-chip"></div>
+                                <div class="swatch-hex"></div>
+                                <div class="swatch-note">✓ Copied to clipboard!</div>
                             </div>
                         `;
+                        colorResult.querySelector('.swatch-chip').style.background = result.sRGBHex;
+                        colorResult.querySelector('.swatch-hex').textContent = result.sRGBHex;
                     } catch (e) {
                         // User cancelled
                         closeAllPanels();
                     }
                 } else {
-                    colorResult.innerHTML = `
-                        <div style="padding: 12px; text-align: center; color: #ef4444;">
-                            ⚠️ Eyedropper API ไม่รองรับใน browser นี้
-                        </div>
-                    `;
+                    colorResult.innerHTML =
+                        '<p class="panel-msg is-error">⚠️ Eyedropper API ไม่รองรับใน browser นี้</p>';
                 }
             };
         }
@@ -223,29 +234,12 @@ document.addEventListener('DOMContentLoaded', () => {
             cacheBtn.classList.add('active');
             cacheResult.classList.remove('hidden');
             cacheResult.innerHTML = `
-                <div style="display: flex; flex-direction: column; gap: 8px;">
-                    <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer;">
-                        <input type="checkbox" id="chk-cache" checked> Cache
-                    </label>
-                    <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer;">
-                        <input type="checkbox" id="chk-cookies" checked> Cookies
-                    </label>
-                    <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer;">
-                        <input type="checkbox" id="chk-storage" checked> Local Storage
-                    </label>
-                    <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer;">
-                        <input type="checkbox" id="chk-history"> History
-                    </label>
-                    <button id="btn-confirm-clear" style="
-                        margin-top: 8px;
-                        padding: 10px;
-                        background: #6366f1;
-                        color: #fff;
-                        border: none;
-                        border-radius: 6px;
-                        font-weight: 500;
-                        cursor: pointer;
-                    ">Clear Selected</button>
+                <div class="sub-list">
+                    <label class="check-row"><input type="checkbox" id="chk-cache" checked> Cache</label>
+                    <label class="check-row"><input type="checkbox" id="chk-cookies" checked> Cookies</label>
+                    <label class="check-row"><input type="checkbox" id="chk-storage" checked> Local Storage</label>
+                    <label class="check-row"><input type="checkbox" id="chk-history"> History</label>
+                    <button id="btn-confirm-clear" class="btn-block">Clear Selected</button>
                 </div>
             `;
 
@@ -260,7 +254,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 chrome.runtime.sendMessage({ action: 'clearCache', options: options }, () => {
                     const btn = document.getElementById('btn-confirm-clear');
                     btn.textContent = '✓ Cleared!';
-                    btn.style.background = '#10b981';
+                    btn.classList.add('is-done');
                     setTimeout(() => {
                         closeAllPanels();
                     }, 1000);
@@ -288,8 +282,19 @@ document.addEventListener('DOMContentLoaded', () => {
     // Helper: Close all panels
     function closeAllPanels() {
         document.querySelectorAll('.tool-result').forEach(el => el.classList.add('hidden'));
-        document.querySelectorAll('.premium-btn').forEach(el => el.classList.remove('active'));
+        document.querySelectorAll('.premium-btn').forEach(el => {
+            el.classList.remove('active');
+            if (el.hasAttribute('aria-expanded')) el.setAttribute('aria-expanded', 'false');
+        });
     }
+
+    // Keep aria-expanded in sync with the visual state after any menu click.
+    // Runs in the bubble phase, so it sees the state the button handlers just set.
+    document.querySelector('.tool-menu').addEventListener('click', () => {
+        document.querySelectorAll('.premium-btn[aria-expanded]').forEach(btn => {
+            btn.setAttribute('aria-expanded', String(btn.classList.contains('active')));
+        });
+    });
 
     // Listen for messages from content script
     chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
@@ -303,7 +308,7 @@ document.addEventListener('DOMContentLoaded', () => {
         resultArea.innerHTML = '';
 
         if (fonts.length === 0) {
-            resultArea.innerHTML = '<p style="color:#64748b;font-size:12px;">No fonts found.</p>';
+            resultArea.innerHTML = '<p class="panel-msg">No fonts found.</p>';
             return;
         }
 

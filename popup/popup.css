@@ -1,37 +1,763 @@
+/* ==========================================================================
+   Tools for Tester — popup (home menu)
+   All popup styling lives here. Do not add inline styles in popup.html.
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   Shell — fixed viewport, sticky header, scrollable list
+   -------------------------------------------------------------------------- */
+html,
 body {
-    width: 350px;
-    min-height: 400px;
+  width: 380px;
+  height: 580px;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
 }
 
-.border-b {
-    border-bottom: 1px solid var(--border-color);
+.app-container {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--bg-color);
 }
 
-.text-lg {
-    font-size: 1.125rem;
+/* --------------------------------------------------------------------------
+   Header
+   -------------------------------------------------------------------------- */
+.app-header {
+  position: relative;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 13px 16px;
+  background: linear-gradient(135deg, #1e293b 0%, #334155 55%, #3b3f6b 100%);
+  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.08), 0 6px 16px -8px rgba(15, 23, 42, 0.5);
+  z-index: 10;
 }
 
-.font-bold {
-    font-weight: 700;
+/* Thin indigo sheen along the bottom edge */
+.app-header::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: linear-gradient(90deg, #6366f1, #8b5cf6, #06b6d4);
+  opacity: 0.85;
 }
 
-.badge {
-    background-color: var(--primary-color);
-    color: white;
-    padding: 0.1rem 0.4rem;
-    border-radius: 9999px;
-    font-size: 0.75rem;
+.app-logo {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 9px;
+  font-size: 15px;
+  background: rgba(255, 255, 255, 0.14);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16);
 }
 
-.tool-btn {
-    padding: 0.75rem 1rem;
-    transition: transform 0.1s;
+.app-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: #ffffff;
+  letter-spacing: -0.2px;
+  line-height: 1.2;
 }
 
-.tool-btn:active {
-    transform: scale(0.98);
+.app-subtitle {
+  display: block;
+  font-size: 10px;
+  font-weight: 500;
+  color: #94a3b8;
+  letter-spacing: 0.3px;
 }
 
-.hidden {
-    display: none;
+.app-version {
+  margin-left: auto;
+  padding: 3px 10px;
+  border-radius: 99px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #e2e8f0;
+  background: rgba(255, 255, 255, 0.13);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+}
+
+/* --------------------------------------------------------------------------
+   Scroll area
+   -------------------------------------------------------------------------- */
+.tool-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 12px 12px 10px;
+  scrollbar-gutter: stable;
+}
+
+.tool-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+
+.tool-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.tool-scroll::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border: 2px solid var(--bg-color);
+  border-radius: 99px;
+}
+
+.tool-scroll::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+.tool-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.tool-item {
+  display: flex;
+  flex-direction: column;
+  /* Per-tool accent, overridden by the .accent-* modifiers below */
+  --accent: #6366f1;
+  --accent-soft: #eef2ff;
+}
+
+.tool-item-row {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: stretch;
+  /* stretch keeps the side control exactly as tall as the button */
+  gap: 8px;
+}
+
+.tool-item-row>.premium-btn {
+  flex: 1;
+  min-width: 0;
+}
+
+/* The panel wraps onto its own line; the row gap already spaces it */
+.tool-item-row>.tool-result {
+  flex-basis: 100%;
+  margin-top: 0;
+}
+
+/* --------------------------------------------------------------------------
+   Primary tool button
+   (class name `premium-btn` is relied on by popup.js — keep it)
+   -------------------------------------------------------------------------- */
+.premium-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  /* 6px + 30px icon + 6px + 2px border = 44px, so all 10 tools fit
+     inside the 580px popup without scrolling */
+  padding: 6px 12px;
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-strong);
+  text-align: left;
+  cursor: pointer;
+  box-shadow: var(--shadow-xs);
+  transition: border-color var(--dur) var(--ease),
+    box-shadow var(--dur) var(--ease), transform var(--dur) var(--ease),
+    background-color var(--dur) var(--ease);
+}
+
+.premium-btn .icon {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  font-size: 15px;
+  line-height: 1;
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.05);
+  transition: transform var(--dur) var(--ease);
+}
+
+.premium-btn .label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.premium-btn:hover {
+  border-color: var(--accent);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
+}
+
+.premium-btn:hover .icon {
+  transform: scale(1.08);
+}
+
+.premium-btn:active {
+  transform: translateY(0);
+  box-shadow: var(--shadow-xs);
+}
+
+.premium-btn:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--ring);
+}
+
+.premium-btn.active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  box-shadow: var(--shadow-xs);
+}
+
+/* Affordance markers ------------------------------------------------------ */
+
+/* Chevron for buttons that expand a submenu */
+.chev {
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  margin-right: 3px;
+  border-right: 2px solid #94a3b8;
+  border-bottom: 2px solid #94a3b8;
+  border-radius: 1px;
+  transform: rotate(45deg) translate(-2px, -2px);
+  transition: transform var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+
+.premium-btn.active .chev {
+  border-color: var(--accent);
+  transform: rotate(-135deg) translate(-2px, -2px);
+}
+
+/* Arrow for buttons that fire immediately and close the popup */
+.go {
+  flex-shrink: 0;
+  font-size: 13px;
+  color: #cbd5e1;
+  opacity: 0;
+  transform: translateX(-4px);
+  transition: opacity var(--dur) var(--ease), transform var(--dur) var(--ease);
+}
+
+.premium-btn:hover .go,
+.premium-btn:focus-visible .go {
+  opacity: 1;
+  transform: translateX(0);
+  color: var(--accent);
+}
+
+/* Per-tool accents -------------------------------------------------------- */
+.accent-rose {
+  --accent: #f43f5e;
+  --accent-soft: #fff1f3;
+}
+
+.accent-indigo {
+  --accent: #6366f1;
+  --accent-soft: #eef2ff;
+}
+
+.accent-amber {
+  --accent: #f59e0b;
+  --accent-soft: #fff7ed;
+}
+
+.accent-sky {
+  --accent: #0ea5e9;
+  --accent-soft: #e0f2fe;
+}
+
+.accent-violet {
+  --accent: #8b5cf6;
+  --accent-soft: #f3e8ff;
+}
+
+.accent-pink {
+  --accent: #ec4899;
+  --accent-soft: #fce7f3;
+}
+
+.accent-teal {
+  --accent: #14b8a6;
+  --accent-soft: #ccfbf1;
+}
+
+.accent-orange {
+  --accent: #f97316;
+  --accent-soft: #ffedd5;
+}
+
+.accent-green {
+  --accent: #22c55e;
+  --accent-soft: #dcfce7;
+}
+
+.accent-blue {
+  --accent: #3b82f6;
+  --accent-soft: #dbeafe;
+}
+
+/* --------------------------------------------------------------------------
+   Submenu panel
+   -------------------------------------------------------------------------- */
+.tool-result {
+  width: 100%;
+  margin-top: 6px;
+  padding: 10px;
+  background: var(--surface-muted);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  box-shadow: inset 0 1px 3px rgba(15, 23, 42, 0.04);
+  animation: slideDown 0.18s var(--ease);
+}
+
+.tool-result.hidden {
+  display: none !important;
+}
+
+.sub-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* Sub-action button — white on the muted panel so it reads as a card */
+.sub-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 11px;
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  box-shadow: var(--shadow-xs);
+  transition: border-color var(--dur) var(--ease),
+    box-shadow var(--dur) var(--ease), transform var(--dur) var(--ease);
+}
+
+.sub-btn .sub-icon {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  font-size: 14px;
+  line-height: 1;
+  background: var(--accent-soft, #eef2ff);
+}
+
+/* Text stack — the wrapper span next to the icon */
+.sub-btn>span:not(.sub-icon) {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.sub-btn .sub-title {
+  display: block;
+  font-weight: 600;
+  color: var(--text-strong);
+  line-height: 1.35;
+}
+
+.sub-btn .sub-desc {
+  display: block;
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.35;
+}
+
+.sub-btn:hover {
+  border-color: var(--accent, #6366f1);
+  box-shadow: var(--shadow-sm);
+  transform: translateX(2px);
+}
+
+.sub-btn:active {
+  transform: translateX(0);
+}
+
+.sub-btn:focus-visible {
+  outline: none;
+  border-color: var(--accent, #6366f1);
+  box-shadow: var(--ring);
+}
+
+/* Status text rendered by popup.js */
+.panel-msg {
+  margin: 0;
+  padding: 4px 2px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.panel-msg.is-error {
+  color: var(--danger-color);
+  text-align: center;
+}
+
+/* --------------------------------------------------------------------------
+   Side controls (Quick Snap / Always On)
+   -------------------------------------------------------------------------- */
+.side-control {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  flex-shrink: 0;
+  min-width: 62px;
+  padding: 4px 8px;
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-xs);
+  font-family: inherit;
+  cursor: pointer;
+  user-select: none;
+  transition: border-color var(--dur) var(--ease),
+    box-shadow var(--dur) var(--ease), transform var(--dur) var(--ease);
+}
+
+/* Applies to both the <button> and the <label> variant */
+.side-control:hover {
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
+}
+
+.side-control:active {
+  transform: translateY(0);
+}
+
+.side-control:focus-within,
+.side-control:focus-visible {
+  outline: none;
+  border-color: var(--primary-color);
+  box-shadow: var(--ring);
+}
+
+.side-control .side-label {
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: 0.2px;
+  line-height: 1;
+}
+
+/* Quick Snap pill */
+.quick-pill {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 22px;
+  border-radius: 99px;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: #fff;
+  font-size: 8px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  box-shadow: 0 2px 6px rgba(99, 102, 241, 0.4);
+}
+
+/* Toggle switch — wrapper matches the track exactly (40 x 22) */
+.toggle {
+  position: relative;
+  width: 40px;
+  height: 22px;
+  flex-shrink: 0;
+}
+
+.toggle input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+  z-index: 2;
+}
+
+.toggle-track {
+  position: absolute;
+  inset: 0;
+  background: var(--border-strong);
+  border-radius: 99px;
+  transition: background-color 0.25s var(--ease);
+}
+
+.toggle-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  background: #ffffff;
+  border-radius: 50%;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.25);
+  transition: transform 0.25s var(--ease);
+}
+
+.toggle input:checked~.toggle-track {
+  background: var(--primary-color);
+}
+
+.toggle input:checked~.toggle-thumb {
+  transform: translateX(18px);
+}
+
+/* --------------------------------------------------------------------------
+   Font Scanner results
+   -------------------------------------------------------------------------- */
+.custom-input-row {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.custom-input-row input {
+  flex: 1;
+  min-width: 0;
+  padding: 7px 10px;
+  background: var(--card-bg);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  font-size: 12px;
+  color: var(--text-color);
+  outline: none;
+  transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+}
+
+.custom-input-row input:focus {
+  border-color: var(--primary-color);
+  box-shadow: var(--ring);
+}
+
+.custom-input-row button {
+  padding: 7px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--card-bg);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+
+.custom-input-row button:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+.custom-input-row .btn-check {
+  background: var(--primary-color);
+  border-color: var(--primary-color);
+  color: #fff;
+}
+
+.custom-input-row .btn-check:hover {
+  background: var(--primary-hover);
+  border-color: var(--primary-hover);
+}
+
+.custom-input-row .btn-clear {
+  color: var(--danger-color);
+  border-color: #fecaca;
+}
+
+.custom-input-row .btn-clear:hover {
+  background: #fef2f2;
+  border-color: var(--danger-color);
+}
+
+.font-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(56px, 1fr));
+  gap: 6px;
+}
+
+.font-btn {
+  padding: 8px 6px;
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-strong);
+  text-align: center;
+  cursor: pointer;
+  box-shadow: var(--shadow-xs);
+  transition: all 0.15s var(--ease);
+}
+
+.font-btn:hover {
+  border-color: var(--primary-color);
+  color: var(--primary-hover);
+  transform: translateY(-1px);
+}
+
+.font-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+.font-btn.active {
+  background: var(--primary-color);
+  border-color: var(--primary-color);
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.35);
+}
+
+/* --------------------------------------------------------------------------
+   Clear Cache checklist
+   -------------------------------------------------------------------------- */
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 10px;
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  color: var(--text-strong);
+  cursor: pointer;
+  transition: border-color var(--dur) var(--ease);
+}
+
+.check-row:hover {
+  border-color: var(--border-strong);
+}
+
+.check-row input {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  accent-color: var(--primary-color);
+  cursor: pointer;
+}
+
+.btn-block {
+  width: 100%;
+  margin-top: 4px;
+  padding: 10px;
+  background: var(--primary-color);
+  border: none;
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
+  transition: background-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+}
+
+.btn-block:hover {
+  background: var(--primary-hover);
+}
+
+.btn-block:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+.btn-block.is-done {
+  background: var(--success-color);
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
+}
+
+/* --------------------------------------------------------------------------
+   Color Picker result swatch
+   -------------------------------------------------------------------------- */
+.swatch-result {
+  padding: 12px 4px;
+  text-align: center;
+}
+
+.swatch-chip {
+  width: 64px;
+  height: 64px;
+  margin: 0 auto 12px;
+  border-radius: var(--radius);
+  border: 2px solid var(--card-bg);
+  box-shadow: var(--shadow-md), inset 0 0 0 1px rgba(15, 23, 42, 0.08);
+}
+
+.swatch-hex {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-strong);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.5px;
+}
+
+.swatch-note {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--success-color);
+  font-weight: 500;
+}
+
+/* --------------------------------------------------------------------------
+   Motion
+   -------------------------------------------------------------------------- */
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  .premium-btn:hover,
+  .side-control:hover,
+  .sub-btn:hover,
+  .font-btn:hover {
+    transform: none;
+  }
 }

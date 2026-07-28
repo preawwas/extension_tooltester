@@ -11,397 +11,194 @@
 
 <body>
   <div class="app-container">
-    <!-- Premium Header -->
-    <header style="
-      padding: 16px 20px;
-      background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    ">
-      <h1 style="font-weight: 700; font-size: 16px; color: #ffffff; margin: 0; letter-spacing: -0.3px;">
-        Tools Tester
-      </h1>
-      <span style="
-        background: rgba(255,255,255,0.15);
-        color: #e2e8f0;
-        padding: 3px 10px;
-        border-radius: 99px;
-        font-size: 11px;
-        font-weight: 600;
-        backdrop-filter: blur(4px);
-      ">4.0</span>
+
+    <header class="app-header">
+      <span class="app-logo" aria-hidden="true">🧰</span>
+      <div>
+        <h1 class="app-title">Tools Tester</h1>
+        <span class="app-subtitle">QA &amp; Dev toolkit</span>
+      </div>
+      <span class="app-version">v4.5</span>
     </header>
 
-    <main style="padding: 12px;">
-      <!-- Tool Buttons with inline result areas -->
+    <main class="tool-scroll">
       <div class="tool-menu">
 
-        <!-- Voice Recorder (with submenu) -->
-        <div class="tool-item">
-          <button id="btn-voice-recorder" class="premium-btn">
-            <span class="icon">🎤</span>
-            <span>Voice Recorder</span>
+        <!-- Voice Recorder -->
+        <div class="tool-item accent-rose">
+          <button id="btn-voice-recorder" class="premium-btn" aria-expanded="false"
+            aria-controls="result-voice-recorder">
+            <span class="icon" aria-hidden="true">🎤</span>
+            <span class="label">Voice Recorder</span>
+            <span class="chev" aria-hidden="true"></span>
           </button>
           <div id="result-voice-recorder" class="tool-result hidden">
-            <div style="display:flex;flex-direction:column;gap:8px;">
-
-              <button id="btn-voice-mic" style="display:flex;align-items:center;gap:10px;padding:12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;cursor:pointer;font-size:13px;text-align:left;width:100%">
-                <span style="font-size:18px">🎙️</span>
-                <div>
-                  <div style="font-weight:600;color:#1e293b">อัดเฉพาะเสียงไมค์</div>
-                  <div style="font-size:11px;color:#64748b">บันทึกเสียงจากไมโครโฟน</div>
-                </div>
+            <div class="sub-list">
+              <button id="btn-voice-mic" class="sub-btn">
+                <span class="sub-icon" aria-hidden="true">🎙️</span>
+                <span>
+                  <span class="sub-title">อัดเฉพาะเสียงไมค์</span>
+                  <span class="sub-desc">บันทึกเสียงจากไมโครโฟน</span>
+                </span>
               </button>
 
-              <button id="btn-voice-desktop" style="display:flex;align-items:center;gap:10px;padding:12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;cursor:pointer;font-size:13px;text-align:left;width:100%">
-                <span style="font-size:18px">🖥️</span>
-                <div>
-                  <div style="font-weight:600;color:#1e293b">อัดเสียงจากระบบ</div>
-                  <div style="font-size:11px;color:#64748b">บันทึกเสียงระบบ + ไมค์</div>
-                </div>
+              <button id="btn-voice-desktop" class="sub-btn">
+                <span class="sub-icon" aria-hidden="true">🖥️</span>
+                <span>
+                  <span class="sub-title">อัดเสียงจากระบบ</span>
+                  <span class="sub-desc">บันทึกเสียงระบบ + ไมค์</span>
+                </span>
               </button>
-
             </div>
           </div>
         </div>
 
-        <!-- Screenshot (with submenu + quick shot) -->
-        <div class="tool-item tool-item-row" style="flex-wrap: wrap;">
-          <button id="btn-screenshot" class="premium-btn" style="flex: 1;">
-            <span class="icon">📸</span>
-            <span>Screenshot</span>
+        <!-- Screenshot -->
+        <div class="tool-item tool-item-row accent-indigo">
+          <button id="btn-screenshot" class="premium-btn" aria-expanded="false" aria-controls="result-screenshot">
+            <span class="icon" aria-hidden="true">📸</span>
+            <span class="label">Screenshot</span>
+            <span class="chev" aria-hidden="true"></span>
           </button>
-          <button id="btn-quick-screenshot" class="persistence-toggle" title="Quick Snap (visible tab)">
-            <div style="width: 36px; height: 20px; display: flex; align-items: center; justify-content: center; background: #6366f1; border-radius: 10px; font-size: 8px; font-weight: 800; color: #fff; text-transform: uppercase; letter-spacing: 0.5px;">
-              Quick
-            </div>
-            <span style="font-size: 9px; color: #64748b; margin-top: 3px; font-weight: 500;">Snap</span>
+          <button id="btn-quick-screenshot" class="side-control" title="Quick Snap — แคปหน้าจอที่เห็นทันที">
+            <span class="quick-pill" aria-hidden="true">Quick</span>
+            <span class="side-label">Snap</span>
           </button>
-          <div id="result-screenshot" class="tool-result hidden" style="width: 100%;">
-            <div style="display:flex;flex-direction:column;gap:8px;">
-
-              <button id="btn-crop-screenshot" style="display:flex;align-items:center;gap:10px;padding:12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;cursor:pointer;font-size:13px;text-align:left;width:100%">
-                <span style="font-size:18px">✂️</span>
-                <div>
-                  <div style="font-weight:600;color:#1e293b">Crop Screenshot</div>
-                  <div style="font-size:11px;color:#64748b">ลากกรอบแล้วแคป</div>
-                </div>
+          <div id="result-screenshot" class="tool-result hidden">
+            <div class="sub-list">
+              <button id="btn-crop-screenshot" class="sub-btn">
+                <span class="sub-icon" aria-hidden="true">✂️</span>
+                <span>
+                  <span class="sub-title">Crop Screenshot</span>
+                  <span class="sub-desc">ลากกรอบแล้วแคป</span>
+                </span>
               </button>
 
-              <button id="btn-browser-screenshot" style="display:flex;align-items:center;gap:10px;padding:12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;cursor:pointer;font-size:13px;text-align:left;width:100%">
-                <span style="font-size:18px">🌐</span>
-                <div>
-                  <div style="font-weight:600;color:#1e293b">Screenshot (Browser)</div>
-                  <div style="font-size:11px;color:#64748b">แคปหน้าต่าง browser</div>
-                </div>
+              <button id="btn-browser-screenshot" class="sub-btn">
+                <span class="sub-icon" aria-hidden="true">🌐</span>
+                <span>
+                  <span class="sub-title">Screenshot (Browser)</span>
+                  <span class="sub-desc">แคปหน้าต่าง browser</span>
+                </span>
               </button>
 
-              <button id="btn-fullpage-screenshot" style="display:flex;align-items:center;gap:10px;padding:12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;cursor:pointer;font-size:13px;text-align:left;width:100%">
-                <span style="font-size:18px">📄</span>
-                <div>
-                  <div style="font-weight:600;color:#1e293b">Full Page Screenshot</div>
-                  <div style="font-size:11px;color:#64748b">แคปทั้งหน้าเว็บ (scroll)</div>
-                </div>
+              <button id="btn-fullpage-screenshot" class="sub-btn">
+                <span class="sub-icon" aria-hidden="true">📄</span>
+                <span>
+                  <span class="sub-title">Full Page Screenshot</span>
+                  <span class="sub-desc">แคปทั้งหน้าเว็บ (scroll)</span>
+                </span>
               </button>
-
             </div>
           </div>
         </div>
 
         <!-- Font Scanner -->
-        <div class="tool-item">
-          <button id="btn-font-scanner" class="premium-btn">
-            <span class="icon">📝</span>
-            <span>Font Scanner</span>
+        <div class="tool-item accent-amber">
+          <button id="btn-font-scanner" class="premium-btn" aria-expanded="false" aria-controls="result-font-scanner">
+            <span class="icon" aria-hidden="true">📝</span>
+            <span class="label">Font Scanner</span>
+            <span class="chev" aria-hidden="true"></span>
           </button>
           <div id="result-font-scanner" class="tool-result hidden"></div>
         </div>
 
         <!-- Element Inspector -->
-        <div class="tool-item">
+        <div class="tool-item accent-sky">
           <button id="btn-inspector" class="premium-btn">
-            <span class="icon">🔍</span>
-            <span>Element Inspector</span>
+            <span class="icon" aria-hidden="true">🔍</span>
+            <span class="label">Element Inspector</span>
+            <span class="go" aria-hidden="true">→</span>
           </button>
         </div>
 
+        <!-- Locator Recorder -->
+        <div class="tool-item accent-violet">
+          <button id="btn-locator-recorder" class="premium-btn" aria-expanded="false"
+            aria-controls="result-locator-recorder">
+            <span class="icon" aria-hidden="true">🎯</span>
+            <span class="label">Locator Recorder</span>
+            <span class="chev" aria-hidden="true"></span>
+          </button>
+          <div id="result-locator-recorder" class="tool-result hidden">
+            <div class="sub-list">
+              <button id="btn-locator-start" class="sub-btn">
+                <span class="sub-icon" aria-hidden="true">⏺️</span>
+                <span>
+                  <span class="sub-title">Start / Stop Recording</span>
+                  <span class="sub-desc">คลิก element เพื่อเก็บ locator</span>
+                </span>
+              </button>
+
+              <button id="btn-locator-clear" class="sub-btn">
+                <span class="sub-icon" aria-hidden="true">🗑️</span>
+                <span>
+                  <span class="sub-title">Clear Records</span>
+                  <span class="sub-desc" id="locator-count-label">ล้าง locator ที่เก็บไว้ทั้งหมด</span>
+                </span>
+              </button>
+            </div>
+          </div>
+        </div>
+
         <!-- Color Picker -->
-        <div class="tool-item">
-          <button id="btn-color-picker" class="premium-btn">
-            <span class="icon">🎨</span>
-            <span>Color Picker</span>
+        <div class="tool-item accent-pink">
+          <button id="btn-color-picker" class="premium-btn" aria-expanded="false" aria-controls="result-color-picker">
+            <span class="icon" aria-hidden="true">🎨</span>
+            <span class="label">Color Picker</span>
+            <span class="chev" aria-hidden="true"></span>
           </button>
           <div id="result-color-picker" class="tool-result hidden"></div>
         </div>
 
         <!-- Responsive Viewer -->
-        <div class="tool-item">
+        <div class="tool-item accent-teal">
           <button id="btn-responsive" class="premium-btn">
-            <span class="icon">📱</span>
-            <span>Responsive Viewer</span>
+            <span class="icon" aria-hidden="true">📱</span>
+            <span class="label">Responsive Viewer</span>
+            <span class="go" aria-hidden="true">→</span>
           </button>
         </div>
 
         <!-- Clear Cache -->
-        <div class="tool-item">
-          <button id="btn-clear-cache" class="premium-btn">
-            <span class="icon">🧹</span>
-            <span>Clear Cache</span>
+        <div class="tool-item accent-orange">
+          <button id="btn-clear-cache" class="premium-btn" aria-expanded="false" aria-controls="result-clear-cache">
+            <span class="icon" aria-hidden="true">🧹</span>
+            <span class="label">Clear Cache</span>
+            <span class="chev" aria-hidden="true"></span>
           </button>
           <div id="result-clear-cache" class="tool-result hidden"></div>
         </div>
 
         <!-- Live Editor -->
-        <div class="tool-item">
+        <div class="tool-item accent-green">
           <button id="btn-live-editor" class="premium-btn">
-            <span class="icon">✏️</span>
-            <span>Live Editor</span>
+            <span class="icon" aria-hidden="true">✏️</span>
+            <span class="label">Live Editor</span>
+            <span class="go" aria-hidden="true">→</span>
           </button>
-          <div id="result-live-editor" class="tool-result hidden"></div>
         </div>
 
-        <!-- API Monitor with Toggle -->
-        <div class="tool-item tool-item-row">
-          <button id="btn-api-monitor" class="premium-btn" style="flex: 1;">
-            <span class="icon">📡</span>
-            <span>API Monitor</span>
+        <!-- API Monitor -->
+        <div class="tool-item tool-item-row accent-blue">
+          <button id="btn-api-monitor" class="premium-btn">
+            <span class="icon" aria-hidden="true">📡</span>
+            <span class="label">API Monitor</span>
+            <span class="go" aria-hidden="true">→</span>
           </button>
-          <label class="persistence-toggle" title="Keep API Monitor active after reload">
-            <div style="position: relative; width: 36px; height: 20px;">
-              <input type="checkbox" id="chk-persistence" style="
-                position: absolute;
-                opacity: 0;
-                width: 100%;
-                height: 100%;
-                cursor: pointer;
-                z-index: 2;
-              ">
-              <div class="toggle-track"></div>
-              <div class="toggle-thumb"></div>
-            </div>
-            <span style="font-size: 9px; color: #64748b; margin-top: 3px; font-weight: 500;">Always On</span>
+          <label class="side-control" title="เปิด API Monitor ค้างไว้แม้จะ reload หน้า">
+            <span class="toggle">
+              <input type="checkbox" id="chk-persistence" aria-label="Keep API Monitor active after reload">
+              <span class="toggle-track"></span>
+              <span class="toggle-thumb"></span>
+            </span>
+            <span class="side-label">Always On</span>
           </label>
         </div>
+
       </div>
     </main>
   </div>
-
-  <style>
-    .tool-menu {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-    }
-
-    .tool-item {
-      display: flex;
-      flex-direction: column;
-    }
-
-    .tool-item-row {
-      flex-direction: row;
-      align-items: center;
-      gap: 8px;
-    }
-
-    .tool-result {
-      background: #f8fafc;
-      border: 1px solid #e2e8f0;
-      border-radius: 8px;
-      padding: 12px;
-      margin-top: 8px;
-      animation: slideDown 0.2s ease;
-    }
-
-    @keyframes slideDown {
-      from {
-        opacity: 0;
-        transform: translateY(-8px);
-      }
-
-      to {
-        opacity: 1;
-        transform: translateY(0);
-      }
-    }
-
-    .tool-result.hidden {
-      display: none;
-    }
-
-    .premium-btn {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      width: 100%;
-      padding: 12px 14px;
-      background: #ffffff;
-      border: 1px solid #e2e8f0;
-      border-radius: 8px;
-      font-size: 13px;
-      font-weight: 500;
-      color: #334155;
-      cursor: pointer;
-      transition: all 0.2s ease;
-      text-align: left;
-    }
-
-    .premium-btn:hover {
-      background: #f8fafc;
-      border-color: #cbd5e1;
-      transform: translateY(-1px);
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-    }
-
-    .premium-btn:active {
-      transform: translateY(0);
-      box-shadow: none;
-    }
-
-    .premium-btn.active {
-      background: #eef2ff;
-      border-color: #6366f1;
-    }
-
-    .premium-btn .icon {
-      font-size: 16px;
-      width: 24px;
-      text-align: center;
-    }
-
-    .persistence-toggle {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      cursor: pointer;
-      user-select: none;
-      padding: 6px 8px;
-      background: #f8fafc;
-      border: 1px solid #e2e8f0;
-      border-radius: 8px;
-      transition: all 0.2s ease;
-      outline: none;
-      font-family: inherit;
-    }
-
-    button.persistence-toggle:hover {
-      background: #f1f5f9;
-      border-color: #cbd5e1;
-      transform: translateY(-1px);
-    }
-
-    button.persistence-toggle:active {
-      transform: translateY(0);
-    }
-
-    /* Toggle Switch */
-    .toggle-track {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 40px;
-      height: 22px;
-      background: #cbd5e1;
-      border-radius: 11px;
-      transition: background 0.25s ease;
-    }
-
-    .toggle-thumb {
-      position: absolute;
-      top: 2px;
-      left: 2px;
-      width: 18px;
-      height: 18px;
-      background: #ffffff;
-      border-radius: 50%;
-      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
-      transition: transform 0.25s ease;
-    }
-
-    #chk-persistence:checked~.toggle-track {
-      background: #6366f1;
-    }
-
-    #chk-persistence:checked~.toggle-thumb {
-      transform: translateX(18px);
-    }
-
-    /* Font Grid */
-    .font-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(55px, 1fr));
-      gap: 6px;
-      padding: 8px 0;
-    }
-
-    .font-btn {
-      background: #1e293b;
-      border: 1px solid #334155;
-      color: #e2e8f0;
-      padding: 8px 6px;
-      border-radius: 6px;
-      font-size: 12px;
-      cursor: pointer;
-      text-align: center;
-      transition: all 0.15s;
-    }
-
-    .font-btn:hover {
-      background: #334155;
-      border-color: #6366f1;
-    }
-
-    .font-btn.active {
-      background: #6366f1;
-      border-color: #6366f1;
-      color: #fff;
-    }
-
-    .custom-input-row {
-      display: flex;
-      gap: 6px;
-      margin-bottom: 8px;
-    }
-
-    .custom-input-row input {
-      flex: 1;
-      padding: 6px 10px;
-      border: 1px solid #cbd5e1;
-      border-radius: 6px;
-      font-size: 12px;
-    }
-
-    .custom-input-row button {
-      padding: 6px 12px;
-      border-radius: 6px;
-      font-size: 12px;
-      cursor: pointer;
-      border: 1px solid #cbd5e1;
-      background: #fff;
-    }
-
-    .custom-input-row button:hover {
-      background: #f1f5f9;
-    }
-
-    .custom-input-row .btn-check {
-      background: #6366f1;
-      color: #fff;
-      border-color: #6366f1;
-    }
-
-    .custom-input-row .btn-check:hover {
-      background: #4f46e5;
-      border-color: #4f46e5;
-      color: #fff;
-    }
-
-    .custom-input-row .btn-clear {
-      color: #ef4444;
-      border-color: #ef4444;
-    }
-  </style>
 
   <script src="popup.js"></script>
 </body>

@@ -747,3 +747,535 @@
         box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
     }
 }
+
+/* ==========================================================================
+   Locator Recorder
+   ========================================================================== */
+
+.mte-lr-highlight {
+    position: fixed;
+    pointer-events: none;
+    z-index: 2147483000;
+    border: 2px solid #6366f1;
+    background: rgba(99, 102, 241, 0.12);
+    border-radius: 2px;
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.7);
+}
+
+.mte-lr-flash {
+    position: fixed;
+    pointer-events: none;
+    z-index: 2147483000;
+    border: 2px solid #16a34a;
+    background: rgba(22, 163, 74, 0.22);
+    border-radius: 2px;
+    animation: mte-lr-flash-anim 0.4s ease-out forwards;
+}
+
+@keyframes mte-lr-flash-anim {
+    from {
+        opacity: 1;
+    }
+
+    to {
+        opacity: 0;
+        transform: scale(1.04);
+    }
+}
+
+.mte-lr-tip {
+    position: fixed;
+    z-index: 2147483001;
+    pointer-events: none;
+    background: #0f172a;
+    color: #f8fafc;
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-family: Consolas, Monaco, monospace;
+    font-size: 11px;
+    line-height: 1.5;
+    max-width: 340px;
+    box-shadow: 0 6px 16px rgba(15, 23, 42, 0.35);
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+
+.mte-lr-tip strong {
+    color: #a5b4fc;
+    font-size: 12px;
+}
+
+.mte-lr-tip span {
+    color: #e2e8f0;
+    word-break: break-all;
+}
+
+.mte-lr-tip em {
+    color: #94a3b8;
+    font-style: normal;
+    font-size: 10px;
+}
+
+/* Panel */
+#mte-locator-recorder {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    width: 480px;
+    height: 520px;
+    min-width: 320px;
+    min-height: 220px;
+    background: #f1f5f9;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.18), 0 4px 8px -4px rgba(0, 0, 0, 0.1);
+    z-index: 2147483002;
+    display: flex;
+    flex-direction: column;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    color: #0f172a;
+    resize: both;
+    overflow: hidden;
+}
+
+#mte-lr-header {
+    padding: 10px 12px;
+    background: #ffffff;
+    border-bottom: 1px solid #e2e8f0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: move;
+    user-select: none;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.mte-lr-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.mte-lr-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #ef4444;
+    animation: mte-pulse-animation 1.5s infinite;
+    flex-shrink: 0;
+}
+
+#mte-locator-recorder.mte-lr-idle .mte-lr-dot {
+    background: #94a3b8;
+    animation: none;
+}
+
+.mte-lr-title {
+    font-weight: 700;
+    font-size: 14px;
+    color: #1e293b;
+    white-space: nowrap;
+}
+
+.mte-lr-count {
+    background: #e0e7ff;
+    color: #4338ca;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 99px;
+}
+
+.mte-lr-btn {
+    background: transparent;
+    border: none;
+    color: #64748b;
+    padding: 5px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
+    font-family: inherit;
+    line-height: 1;
+    transition: all 0.15s;
+}
+
+.mte-lr-btn:hover {
+    background: #f1f5f9;
+    color: #0f172a;
+}
+
+.mte-lr-btn-pick {
+    background: #eef2ff;
+    color: #4338ca;
+}
+
+.mte-lr-btn-pick:hover {
+    background: #e0e7ff;
+    color: #3730a3;
+}
+
+.mte-lr-btn-pick.mte-lr-paused {
+    background: #f1f5f9;
+    color: #64748b;
+}
+
+.mte-lr-btn-danger:hover {
+    background: #fee2e2;
+    color: #ef4444;
+}
+
+.mte-lr-btn-icon {
+    font-size: 16px;
+    padding: 3px 7px;
+}
+
+#mte-lr-tabs {
+    display: flex;
+    gap: 4px;
+    padding: 8px 12px 0;
+    background: #ffffff;
+    border-bottom: 1px solid #e2e8f0;
+    flex-shrink: 0;
+}
+
+.mte-lr-tab {
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: #64748b;
+    padding: 8px 12px;
+    font-size: 12.5px;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.mte-lr-tab:hover {
+    color: #334155;
+}
+
+.mte-lr-tab.active {
+    color: #4338ca;
+    border-bottom-color: #6366f1;
+}
+
+.mte-lr-hint {
+    padding: 6px 12px;
+    background: #fffbeb;
+    border-bottom: 1px solid #fde68a;
+    color: #92400e;
+    font-size: 11px;
+    line-height: 1.5;
+    flex-shrink: 0;
+}
+
+.mte-lr-hint b {
+    color: #78350f;
+}
+
+#mte-lr-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.mte-lr-empty {
+    text-align: center;
+    color: #94a3b8;
+    font-size: 13px;
+    line-height: 2;
+    padding: 34px 12px;
+}
+
+.mte-lr-empty small {
+    font-size: 11px;
+}
+
+.mte-lr-item {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    padding: 6px 8px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.mte-lr-line-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.mte-lr-line {
+    flex: 1;
+    min-width: 0;
+    font-family: Consolas, Monaco, monospace;
+    font-size: 12.5px;
+    color: #1e293b;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    user-select: all;
+}
+
+.mte-lr-index {
+    background: #1e293b;
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 4px;
+    flex-shrink: 0;
+}
+
+.mte-lr-tag {
+    font-family: Consolas, Monaco, monospace;
+    font-size: 12px;
+    font-weight: 700;
+    color: #7c3aed;
+    flex-shrink: 0;
+}
+
+.mte-lr-text {
+    font-size: 12px;
+    color: #475569;
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.mte-lr-tier {
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 4px;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.mte-lr-tier-mini {
+    color: #fff;
+    font-size: 9px;
+    font-weight: 800;
+    padding: 2px 5px;
+    border-radius: 3px;
+    flex-shrink: 0;
+}
+
+.mte-lr-del {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    font-size: 12px;
+    opacity: 0.4;
+    padding: 2px 4px;
+    line-height: 1;
+    flex-shrink: 0;
+}
+
+.mte-lr-del:hover {
+    opacity: 1;
+}
+
+.mte-lr-table {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.mte-lr-subhead {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
+    color: #94a3b8;
+    margin: 8px 0 2px;
+}
+
+.mte-lr-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 6px;
+    border-radius: 4px;
+    background: #f8fafc;
+}
+
+.mte-lr-row-unique {
+    background: #f0fdf4;
+    box-shadow: inset 2px 0 0 #16a34a;
+}
+
+.mte-lr-key {
+    font-size: 11px;
+    font-weight: 700;
+    color: #64748b;
+    min-width: 84px;
+    flex-shrink: 0;
+}
+
+.mte-lr-val {
+    flex: 1;
+    min-width: 0;
+    font-family: Consolas, Monaco, monospace;
+    font-size: 11.5px;
+    color: #1e293b;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.mte-lr-chip {
+    font-size: 9.5px;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 99px;
+    background: #e2e8f0;
+    color: #475569;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.mte-lr-chip-ok {
+    background: #dcfce7;
+    color: #15803d;
+}
+
+.mte-lr-chip-warn {
+    background: #fef9c3;
+    color: #a16207;
+}
+
+.mte-lr-chip-bad {
+    background: #fee2e2;
+    color: #b91c1c;
+}
+
+.mte-lr-chip-info {
+    background: #e0e7ff;
+    color: #4338ca;
+}
+
+.mte-lr-copy {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    font-size: 11px;
+    padding: 2px 4px;
+    opacity: 0.5;
+    line-height: 1;
+    flex-shrink: 0;
+}
+
+.mte-lr-copy:hover {
+    opacity: 1;
+}
+
+.mte-lr-best {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 8px;
+    margin-top: 6px;
+    background: #eef2ff;
+    border: 1px solid #c7d2fe;
+    border-radius: 5px;
+}
+
+.mte-lr-best-label {
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    color: #4338ca;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.mte-lr-best code {
+    flex: 1;
+    min-width: 0;
+    font-family: Consolas, Monaco, monospace;
+    font-size: 11.5px;
+    color: #312e81;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.mte-lr-code {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 8px;
+    margin-top: 4px;
+    background: #0f172a;
+    border-radius: 5px;
+}
+
+.mte-lr-code code {
+    flex: 1;
+    min-width: 0;
+    font-family: Consolas, Monaco, monospace;
+    font-size: 11.5px;
+    color: #a5f3fc;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.mte-lr-code .mte-lr-copy {
+    filter: grayscale(1) brightness(2);
+}
+
+.mte-lr-note {
+    font-size: 10.5px;
+    color: #92400e;
+    background: #fffbeb;
+    border-radius: 4px;
+    padding: 4px 6px;
+    line-height: 1.5;
+}
+
+/* Minimized state */
+#mte-locator-recorder.mte-minimized {
+    width: 40px !important;
+    height: 40px !important;
+    min-height: 40px !important;
+    max-height: 40px !important;
+    border-radius: 20px !important;
+    padding: 0 !important;
+    align-items: center !important;
+    justify-content: center !important;
+    resize: none !important;
+    background: #6366f1 !important;
+    color: #fff !important;
+    cursor: pointer !important;
+    border: none !important;
+    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4) !important;
+    overflow: visible !important;
+}
+
+#mte-locator-recorder.mte-minimized #mte-lr-header,
+#mte-locator-recorder.mte-minimized #mte-lr-tabs,
+#mte-locator-recorder.mte-minimized .mte-lr-hint,
+#mte-locator-recorder.mte-minimized #mte-lr-content {
+    display: none !important;
+}
+
+#mte-locator-recorder.mte-minimized .mte-minimized-text {
+    display: block;
+}
+
+#mte-locator-recorder:not(.mte-minimized) .mte-minimized-badge {
+    display: none !important;
+}

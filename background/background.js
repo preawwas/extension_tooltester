@@ -52,6 +52,16 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         return true; // Keep channel open
     }
 
+    if (request.action === 'forwardLocatorRecord') {
+        // Relay a locator picked inside an iframe to the top frame's panel
+        if (sender.tab && sender.tab.id) {
+            chrome.tabs.sendMessage(sender.tab.id, {
+                action: 'receiveLocatorRecord',
+                data: request.data
+            }, { frameId: 0 }).catch(() => { });
+        }
+    }
+
     if (request.action === 'forwardApiData') {
         // Relay this data to the top frame (ID 0) of the specific tab
         if (sender.tab && sender.tab.id) {
@@ -335,6 +345,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
                 if (result.activeTool === 'inspector') action = 'toggleInspector';
                 else if (result.activeTool === 'colorPicker') action = 'toggleColorPicker';
                 else if (result.activeTool === 'fontScanner') action = 'highlightFont';
+                else if (result.activeTool === 'locatorRecorder') action = 'toggleLocatorRecorder';
 
                 if (action) {
                     const payload = { action: action, force: true };
